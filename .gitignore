@@ -1,0 +1,4 @@
+node_modules
+.env
+outputs
+build_lastwar_map_mapping.mjs

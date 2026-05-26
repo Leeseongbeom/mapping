@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>라스트워 좌표 맵</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="map-panel" aria-label="좌표 지도">
+        <div class="map-toolbar">
+          <div>
+            <h1>라스트워 좌표 맵</h1>
+            <p>
+              남은 보급품 <span id="supplyCount">0</span>개 · 사용 <span id="usedCount">0</span>개
+            </p>
+          </div>
+          <div class="toolbar-actions">
+            <button id="fitButton" type="button">전체 보기</button>
+            <button id="clearButton" class="admin-only" type="button">사용 전체 취소</button>
+          </div>
+        </div>
+        <div class="map-wrap">
+          <canvas id="mapCanvas" width="1000" height="1000"></canvas>
+          <div class="corner-label bottom-left">0,0</div>
+          <div class="corner-label top-right">999,999</div>
+        </div>
+        <div class="status-row">
+          <span id="hoverCoord">좌표: -</span>
+          <span class="legend"><b class="dot supply-dot"></b>보급품 <b class="dot used-dot"></b>사용</span>
+          <span id="message">파란 핀을 클릭하면 사용, 빨간 핀을 클릭하면 취소됩니다.</span>
+        </div>
+      </section>
+
+      <aside class="side-panel" aria-label="좌표 관리">
+        <section class="control-section admin-login-section">
+          <h2>관리자</h2>
+          <div class="admin-login-row">
+            <input id="adminCodeInput" type="password" placeholder="관리자 코드" autocomplete="current-password" />
+            <button id="adminLoginButton" class="primary" type="button">입력</button>
+            <button id="adminLogoutButton" class="admin-only" type="button">나가기</button>
+          </div>
+          <p id="adminState" class="admin-state">보기 전용 모드</p>
+        </section>
+
+        <section class="control-section admin-only">
+          <h2>사용 목록 대량 추가</h2>
+          <textarea
+            id="addInput"
+            placeholder="예:&#10;123,456&#10;124 456&#10;(125, 456)&#10;126	456"
+            spellcheck="false"
+          ></textarea>
+          <div class="button-row">
+            <button id="pasteAddButton" type="button">붙여넣기</button>
+            <button id="addButton" class="primary" type="button">사용 추가</button>
+          </div>
+        </section>
+
+        <section class="control-section compact">
+          <h2>목록</h2>
+          <div class="list-actions">
+            <input id="searchInput" type="search" placeholder="좌표 검색: 123,456" />
+          </div>
+          <div class="split-lists">
+            <div class="list-panel">
+              <div class="list-header">
+                <span><b class="dot supply-dot"></b>남은 보급품 목록</span>
+                <span id="supplyListCount">0개</span>
+              </div>
+              <div id="supplyList" class="coord-list" data-layer="supply" aria-live="polite"></div>
+            </div>
+            <div class="list-panel">
+              <div class="list-header">
+                <span><b class="dot used-dot"></b>사용한 보급품 목록</span>
+                <span class="header-actions">
+                  <span id="usedListCount">0개</span>
+                  <button id="copyUsedButton" class="row-action admin-only" type="button">복사</button>
+                </span>
+              </div>
+              <div id="usedList" class="coord-list" data-layer="used" aria-live="polite"></div>
+            </div>
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
