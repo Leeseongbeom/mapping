@@ -73,13 +73,20 @@ function isUsedCoordinate(value) {
 }
 
 async function loadUsed() {
+  return (await loadState()).used;
+}
+
+async function loadState() {
   if (USE_SUPABASE) return await loadUsedFromSupabase();
 
   try {
     const data = JSON.parse(await fs.readFile(DATA_FILE, "utf8"));
-    return Array.isArray(data.used) ? data.used.filter(isUsedCoordinate) : [];
+    return {
+      used: Array.isArray(data.used) ? data.used.filter(isUsedCoordinate) : [],
+      updatedAt: typeof data.updatedAt === "string" ? data.updatedAt : null,
+    };
   } catch {
-    return [];
+    return { used: [], updatedAt: null };
   }
 }
 
@@ -87,8 +94,10 @@ async function saveUsed(used) {
   if (USE_SUPABASE) return await saveUsedToSupabase(used);
 
   const clean = Array.from(new Set(used.filter(isUsedCoordinate)));
+  const updatedAt = new Date().toISOString();
   await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.writeFile(DATA_FILE, JSON.stringify({ used: clean }, null, 2), "utf8");
+  await fs.writeFile(DATA_FILE, JSON.stringify({ used: clean, updatedAt }, null, 2), "utf8");
+  return { used: clean, updatedAt };
 }
 
 function supabaseHeaders(extra = {}) {
@@ -118,21 +127,30 @@ async function supabaseRequest(url, options = {}) {
 
 async function loadUsedFromSupabase() {
   const rows = await supabaseRequest(
-    supabaseTableUrl("?select=coord&order=position.asc"),
+    supabaseTableUrl("?select=coord,updated_at&order=position.asc"),
   );
-  return Array.isArray(rows) ? rows.map((row) => row.coord).filter(isUsedCoordinate) : [];
+  const used = Array.isArray(rows) ? rows.map((row) => row.coord).filter(isUsedCoordinate) : [];
+  const updatedAt = Array.isArray(rows)
+    ? rows.reduce((latest, row) => {
+        if (typeof row.updated_at !== "string") return latest;
+        if (!latest || row.updated_at > latest) return row.updated_at;
+        return latest;
+      }, null)
+    : null;
+  return { used, updatedAt };
 }
 
 async function saveUsedToSupabase(used) {
   const clean = Array.from(new Set(used.filter(isUsedCoordinate)));
+  const updatedAt = new Date().toISOString();
   await supabaseRequest(supabaseTableUrl("?coord=not.is.null"), {
     method: "DELETE",
     headers: { Prefer: "return=minimal" },
   });
 
-  if (!clean.length) return;
+  if (!clean.length) return { used: clean, updatedAt };
 
-  const rows = clean.map((coord, index) => ({ coord, position: index }));
+  const rows = clean.map((coord, index) => ({ coord, position: index, updated_at: updatedAt }));
   await supabaseRequest(supabaseTableUrl(), {
     method: "POST",
     headers: {
@@ -141,6 +159,7 @@ async function saveUsedToSupabase(used) {
     },
     body: JSON.stringify(rows),
   });
+  return { used: clean, updatedAt };
 }
 
 function sign(payload) {
@@ -169,7 +188,7 @@ async function handleApi(req, res, url) {
   if (req.method === "OPTIONS") return json(res, 204, {});
 
   if (req.method === "GET" && url.pathname === "/api/state") {
-    return json(res, 200, { used: await loadUsed() });
+    return json(res, 200, await loadState());
   }
 
   if (req.method === "POST" && url.pathname === "/api/admin/login") {
@@ -188,8 +207,7 @@ async function handleApi(req, res, url) {
     }
     const remove = new Set((Array.isArray(body.remove) ? body.remove : []).filter(isUsedCoordinate));
     if (remove.size) used = used.filter((coord) => !remove.has(coord));
-    await saveUsed(used);
-    return json(res, 200, { used });
+    return json(res, 200, await saveUsed(used));
   }
 
   return json(res, 404, { error: "not found" });

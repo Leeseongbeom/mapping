@@ -33,6 +33,7 @@ const supplyListCount = document.getElementById("supplyListCount");
 const usedListCount = document.getElementById("usedListCount");
 const searchInput = document.getElementById("searchInput");
 const toast = document.getElementById("toast");
+const updatedAtLabel = document.getElementById("updatedAtLabel");
 
 const layers = {
   supply: new Set(),
@@ -49,6 +50,7 @@ let dragStart = null;
 let adminToken = sessionStorage.getItem(ADMIN_TOKEN_KEY) || "";
 let isAdmin = Boolean(adminToken);
 let toastTimer = null;
+let latestUpdatedAt = "";
 
 function keyOf(x, y) {
   return `${x},${y}`;
@@ -84,6 +86,7 @@ async function loadInitialData() {
   try {
     const data = await apiFetch("/api/state");
     layers.used = new Set(Array.isArray(data.used) ? data.used : []);
+    latestUpdatedAt = data.updatedAt || "";
     refresh("서버의 사용 목록을 불러왔습니다.");
     return;
   } catch {
@@ -95,6 +98,7 @@ async function loadInitialData() {
     try {
       const parsed = JSON.parse(saved);
       layers.used = new Set(Array.isArray(parsed.used) ? parsed.used : []);
+      latestUpdatedAt = parsed.updatedAt || "";
       refresh("저장된 좌표를 불러왔습니다.");
       return;
     } catch {
@@ -102,6 +106,7 @@ async function loadInitialData() {
     }
   }
   for (const [x, y] of parseCoordinates(INITIAL_USED).parsed) layers.used.add(keyOf(x, y));
+  latestUpdatedAt = new Date().toISOString();
   refresh("사진 좌표를 불러왔습니다. 파란 보급품 핀을 클릭하면 사용 목록으로 이동합니다.");
 }
 
@@ -170,6 +175,7 @@ function layerLabel(layerName) {
 function refresh(text) {
   supplyCount.textContent = getRemainingSupply().size.toLocaleString("ko-KR");
   usedCount.textContent = layers.used.size.toLocaleString("ko-KR");
+  updatedAtLabel.textContent = formatUpdatedAt(latestUpdatedAt);
   saveLocalFallback();
   setMessage(text);
   renderList();
@@ -181,6 +187,7 @@ function saveLocalFallback() {
     STORAGE_KEY,
     JSON.stringify({
       used: Array.from(layers.used),
+      updatedAt: latestUpdatedAt,
     }),
   );
 }
@@ -198,6 +205,7 @@ async function mutateUsed(payload, pendingText) {
       body: JSON.stringify(payload),
     });
     layers.used = new Set(Array.isArray(data.used) ? data.used : []);
+    latestUpdatedAt = data.updatedAt || new Date().toISOString();
     refresh("반영되었습니다.");
     showToast("반영되었습니다.");
     return true;
@@ -222,6 +230,18 @@ function showToast(text) {
   toastTimer = setTimeout(() => {
     toast.classList.remove("is-visible");
   }, 1800);
+}
+
+function formatUpdatedAt(value) {
+  if (!value) return "최신화 -";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "최신화 -";
+  return `최신화 ${date.toLocaleTimeString("ko-KR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Seoul",
+  })}`;
 }
 
 function renderList() {
