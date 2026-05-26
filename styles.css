@@ -738,7 +738,7 @@ select {
 
   .split-lists {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(220px, 42vh) minmax(220px, 42vh);
+    grid-template-rows: minmax(180px, 32vh) minmax(180px, 32vh);
     max-height: none;
   }
 
