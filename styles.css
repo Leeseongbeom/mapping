@@ -254,6 +254,14 @@ button.primary:hover {
   color: #0a0f1c;
 }
 
+button.is-active,
+button[aria-pressed="true"] {
+  border-color: rgba(106, 166, 255, 0.52);
+  background: rgba(106, 166, 255, 0.16);
+  color: var(--ink);
+  box-shadow: 0 0 0 3px rgba(106, 166, 255, 0.1);
+}
+
 button.danger {
   border-color: rgba(255, 107, 107, 0.45);
   background: rgba(255, 107, 107, 0.14);

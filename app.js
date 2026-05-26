@@ -2,6 +2,30 @@ import { INITIAL_SUPPLY } from "./supply-data.js";
 
 const MAP_SIZE = 1000;
 const BOUNDARIES = [0, 74, 149, 224, 299, 374, 449, 549, 624, 699, 774, 849, 924, 999];
+const BUILDING_NAMES = {
+  1: "마을",
+  2: "도시",
+  3: "공장",
+  4: "열차역",
+  5: "로켓기지",
+  6: "전쟁 궁전",
+  7: "원자력 전기로",
+};
+const BUILDING_GRID = [
+  ".1.1.1.1.1.1.",
+  "1.2.1.2.1.2.1",
+  ".2.3.3.3.3.2.",
+  "1.3.4.4.4.3.1",
+  ".2.4.5.5.4.2.",
+  "1.3.5.6.5.3.1",
+  "2.4.6.7.6.4.2",
+  "1.3.5.6.5.3.1",
+  ".2.4.5.5.4.2.",
+  "1.3.4.4.4.3.1",
+  ".2.3.3.3.3.2.",
+  "1.2.1.2.1.2.1",
+  ".1.1.1.1.1.1.",
+];
 
 const INITIAL_USED = `
 218,423 190,716 205,709 767,785
@@ -34,15 +58,19 @@ const usedListCount = document.getElementById("usedListCount");
 const searchInput = document.getElementById("searchInput");
 const toast = document.getElementById("toast");
 const updatedAtLabel = document.getElementById("updatedAtLabel");
+const bulkAddSection = document.getElementById("bulkAddSection");
+const buildingToggle = document.getElementById("buildingToggle");
 
 const layers = {
   supply: new Set(),
   used: new Set(),
 };
+const buildings = createBuildings();
 const STORAGE_KEY = "lastwar-coordinate-map-v2";
 const LEGACY_STORAGE_KEY = "lastwar-coordinate-map-v1";
 const API_BASE = location.protocol === "file:" ? "http://127.0.0.1:4174" : "";
 const ADMIN_TOKEN_KEY = "lastwar-admin-token";
+const BUILDING_TOGGLE_KEY = "lastwar-show-buildings";
 
 let view = { x: 0, y: 0, size: MAP_SIZE };
 let isDragging = false;
@@ -51,6 +79,7 @@ let adminToken = sessionStorage.getItem(ADMIN_TOKEN_KEY) || "";
 let isAdmin = Boolean(adminToken);
 let toastTimer = null;
 let latestUpdatedAt = "";
+let showBuildings = localStorage.getItem(BUILDING_TOGGLE_KEY) === "1";
 
 function keyOf(x, y) {
   return `${x},${y}`;
@@ -128,6 +157,7 @@ async function apiFetch(path, options = {}) {
 function setAdminMode(nextIsAdmin, text) {
   isAdmin = nextIsAdmin;
   document.body.classList.toggle("is-admin", isAdmin);
+  bulkAddSection.hidden = !isAdmin;
   adminState.textContent = text || (isAdmin ? "관리자 모드" : "보기 전용 모드");
 }
 
@@ -248,6 +278,21 @@ function renderList() {
   const query = searchInput.value.trim();
   renderLayerList(getRemainingSupply(), supplyList, supplyListCount, query);
   renderLayerList(layers.used, usedList, usedListCount, query);
+}
+
+function createBuildings() {
+  const entries = [];
+  BUILDING_GRID.forEach((row, rowIndex) => {
+    [...row].forEach((value, colIndex) => {
+      if (value === ".") return;
+      const type = Number(value);
+      const x = (BOUNDARIES[colIndex] + BOUNDARIES[colIndex + 1]) / 2;
+      const yIndex = BOUNDARIES.length - 2 - rowIndex;
+      const y = (BOUNDARIES[yIndex] + BOUNDARIES[yIndex + 1]) / 2;
+      entries.push({ x, y, type, name: BUILDING_NAMES[type] });
+    });
+  });
+  return entries;
 }
 
 function getRemainingSupply() {
@@ -374,6 +419,25 @@ function findNearestVisibleCoordinate(layer, point) {
   return nearest;
 }
 
+function findNearestBuilding(point) {
+  const rect = canvas.getBoundingClientRect();
+  const threshold = Math.max(14, buildingSize(rect) * 0.9);
+  let nearest = null;
+  let nearestDistance = Infinity;
+
+  for (const building of buildings) {
+    if (building.x < view.x || building.x > view.x + view.size || building.y < view.y || building.y > view.y + view.size) continue;
+    const screen = mapToScreen(building.x, building.y, rect);
+    const distance = Math.hypot(screen.x - point.x, screen.y - point.y);
+    if (distance <= threshold && distance < nearestDistance) {
+      nearest = building;
+      nearestDistance = distance;
+    }
+  }
+
+  return nearest;
+}
+
 function jumpToCoordinate(coordText) {
   const [x, y] = coordText.split(",").map(Number);
   view.size = Math.min(view.size, 80);
@@ -418,6 +482,7 @@ function draw() {
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, rect.width, rect.height);
   drawBoundaries(rect);
+  if (showBuildings) drawBuildings(rect);
   drawLayer(rect, getRemainingSupply(), "#6aa6ff", 1);
   drawLayer(rect, getConfirmedUsed(), "#ff6b6b", 1);
   drawManualLayer(rect, getManualUsed(), "#b779ff");
@@ -447,6 +512,93 @@ function drawBoundaries(rect) {
       ctx.stroke();
     }
   }
+}
+
+function drawBuildings(rect) {
+  const size = buildingSize(rect);
+  const showNames = view.size <= 380;
+  for (const building of buildings) {
+    if (building.x < view.x || building.x > view.x + view.size || building.y < view.y || building.y > view.y + view.size) continue;
+    const p = mapToScreen(building.x, building.y, rect);
+    drawBuildingMarker(p.x, p.y, size, building, showNames);
+  }
+}
+
+function buildingSize(rect) {
+  const pixelsPerCoordinate = rect.width / view.size;
+  return Math.max(10, Math.min(52, 8 + pixelsPerCoordinate * 4.2));
+}
+
+function drawBuildingMarker(x, y, size, building, showName) {
+  ctx.save();
+  const glow = size * 1.55;
+  const gradient = ctx.createRadialGradient(x, y, size * 0.15, x, y, glow * 0.5);
+  gradient.addColorStop(0, "rgba(116, 202, 255, 0.38)");
+  gradient.addColorStop(0.65, "rgba(70, 160, 255, 0.18)");
+  gradient.addColorStop(1, "rgba(70, 160, 255, 0)");
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(x, y, glow * 0.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  const baseW = size * 0.58;
+  const baseH = size * 0.34;
+  ctx.fillStyle = "rgba(214, 224, 235, 0.84)";
+  ctx.strokeStyle = "rgba(75, 86, 103, 0.7)";
+  ctx.lineWidth = Math.max(1, size * 0.035);
+  roundRect(x - baseW / 2, y + size * 0.08, baseW, baseH, Math.max(3, size * 0.08));
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(x, y + size * 0.06, size * 0.16, Math.PI, 0);
+  ctx.lineTo(x + size * 0.16, y + size * 0.14);
+  ctx.lineTo(x - size * 0.16, y + size * 0.14);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  const shieldW = size * 0.42;
+  const shieldH = size * 0.5;
+  const shieldX = x - size * 0.58;
+  const shieldY = y - size * 0.62;
+  ctx.fillStyle = "#f59e0b";
+  ctx.strokeStyle = "#ffe08a";
+  ctx.lineWidth = Math.max(1.5, size * 0.045);
+  ctx.beginPath();
+  ctx.moveTo(shieldX - shieldW / 2, shieldY - shieldH / 2);
+  ctx.lineTo(shieldX + shieldW / 2, shieldY - shieldH / 2);
+  ctx.lineTo(shieldX + shieldW / 2, shieldY + shieldH * 0.22);
+  ctx.lineTo(shieldX, shieldY + shieldH / 2);
+  ctx.lineTo(shieldX - shieldW / 2, shieldY + shieldH * 0.22);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = "#ffffff";
+  ctx.font = `800 ${Math.max(9, size * 0.27)}px ui-sans-serif, system-ui, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(String(building.type), shieldX, shieldY - size * 0.02);
+
+  if (showName) {
+    ctx.font = `700 ${Math.max(10, Math.min(15, size * 0.26))}px ui-sans-serif, system-ui, sans-serif`;
+    const paddingX = size * 0.16;
+    const labelW = ctx.measureText(building.name).width + paddingX * 2;
+    const labelH = Math.max(18, size * 0.34);
+    const labelX = x - size * 0.34;
+    const labelY = y - size * 0.68;
+    ctx.fillStyle = "rgba(53, 57, 63, 0.72)";
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.18)";
+    ctx.lineWidth = 1;
+    roundRect(labelX, labelY, labelW, labelH, labelH / 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#f5f7fb";
+    ctx.textAlign = "left";
+    ctx.fillText(building.name, labelX + paddingX, labelY + labelH / 2);
+  }
+  ctx.restore();
 }
 
 function drawLayer(rect, layer, color, alpha, note = "") {
@@ -679,6 +831,14 @@ document.getElementById("fitButton").addEventListener("click", () => {
   view = { x: 0, y: 0, size: MAP_SIZE };
   draw();
 });
+buildingToggle.addEventListener("click", () => {
+  showBuildings = !showBuildings;
+  localStorage.setItem(BUILDING_TOGGLE_KEY, showBuildings ? "1" : "0");
+  buildingToggle.setAttribute("aria-pressed", String(showBuildings));
+  buildingToggle.classList.toggle("is-active", showBuildings);
+  draw();
+  setMessage(showBuildings ? "건물 표시를 켰습니다." : "건물 표시를 껐습니다.");
+});
 document.getElementById("copyUsedButton").addEventListener("click", () => copyLayer("used"));
 adminLoginButton.addEventListener("click", loginAdmin);
 adminLogoutButton.addEventListener("click", () => logoutAdmin("보기 전용 모드"));
@@ -698,7 +858,8 @@ canvas.addEventListener("mousemove", (event) => {
   else if (layers.supply.has(key)) tags.push("보급품");
   hoverCoord.textContent = `좌표: ${coord.x},${coord.y}${tags.length ? ` · ${tags.join("/")}` : ""}`;
   const manual = findNearestVisibleCoordinate(getManualUsed(), canvasPoint(event));
-  canvas.title = manual ? `${manual}: ${MANUAL_USED_NOTE}` : "";
+  const building = showBuildings ? findNearestBuilding(canvasPoint(event)) : null;
+  canvas.title = manual ? `${manual}: ${MANUAL_USED_NOTE}` : building ? `${building.type}. ${building.name}` : "";
   if (!isDragging) return;
   const point = canvasPoint(event);
   const moved = Math.hypot(point.x - dragStart.x, point.y - dragStart.y);
@@ -729,4 +890,6 @@ canvas.addEventListener("wheel", zoomAt, { passive: false });
 window.addEventListener("resize", draw);
 
 canvas.style.cursor = "grab";
+buildingToggle.setAttribute("aria-pressed", String(showBuildings));
+buildingToggle.classList.toggle("is-active", showBuildings);
 loadInitialData();

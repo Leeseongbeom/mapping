@@ -20,6 +20,7 @@
             </p>
           </div>
           <div class="toolbar-actions">
+            <button id="buildingToggle" type="button" aria-pressed="false">건물 표시</button>
             <button id="fitButton" type="button">전체 보기</button>
             <button id="clearButton" class="admin-only" type="button">사용 전체 취소</button>
           </div>
@@ -51,7 +52,7 @@
           <p id="adminState" class="admin-state">보기 전용 모드</p>
         </section>
 
-        <section class="control-section admin-only">
+        <section id="bulkAddSection" class="control-section admin-only" hidden>
           <h2>사용 목록 대량 추가</h2>
           <textarea
             id="addInput"
