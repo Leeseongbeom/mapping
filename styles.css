@@ -28,6 +28,9 @@
   --used: #ff6b6b;
   --used-glow: rgba(255, 107, 107, 0.4);
   --used-soft: rgba(255, 107, 107, 0.12);
+  --manual: #b779ff;
+  --manual-glow: rgba(183, 121, 255, 0.42);
+  --manual-soft: rgba(183, 121, 255, 0.13);
   --danger: #ff8585;
   /* map */
   --map: #0c1a18;
@@ -333,6 +336,11 @@ canvas {
   box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.18), 0 0 10px var(--used-glow);
 }
 
+.manual-dot {
+  background: var(--manual);
+  box-shadow: 0 0 0 2px rgba(183, 121, 255, 0.18), 0 0 10px var(--manual-glow);
+}
+
 #message {
   flex: 1;
   text-align: right;
@@ -546,11 +554,22 @@ select {
   background: rgba(255, 255, 255, 0.03);
 }
 
+.coord-row.manual-row {
+  background: var(--manual-soft);
+}
+
+.coord-row.manual-row:hover {
+  background: rgba(183, 121, 255, 0.2);
+}
+
 .coord-row:last-child {
   border-bottom: 0;
 }
 
 .coord-jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   min-height: 28px;
   overflow: hidden;
   border: 0;

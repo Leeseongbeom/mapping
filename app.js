@@ -13,6 +13,13 @@ const INITIAL_USED = `
 608,203 422,223 431,777 435,780 420,180 833,601 155,292
 `;
 
+const MANUAL_USED_COORDINATES = `
+608,203 422,223 431,777 435,780 393,203 430,208 196,238
+190,394 586,199 218,423 761,163 249,849 250,844
+`;
+const MANUAL_USED_NOTE =
+  "수기 입력 좌표입니다. 보급품 목록 중 가까운 좌표가 잘못 표기된 것으로 보고, 근처 보급품이 사용된 것으로 참고하세요.";
+
 const canvas = document.getElementById("mapCanvas");
 const ctx = canvas.getContext("2d", { alpha: false });
 const supplyCount = document.getElementById("supplyCount");
@@ -34,6 +41,7 @@ const layers = {
   supply: new Set(),
   used: new Set(),
 };
+const manualUsed = new Set();
 const STORAGE_KEY = "lastwar-coordinate-map-v2";
 const LEGACY_STORAGE_KEY = "lastwar-coordinate-map-v1";
 const API_BASE = location.protocol === "file:" ? "http://127.0.0.1:4174" : "";
@@ -73,6 +81,7 @@ function parseCoordinates(text) {
 
 async function loadInitialData() {
   for (const [x, y] of parseCoordinates(INITIAL_SUPPLY).parsed) layers.supply.add(keyOf(x, y));
+  for (const [x, y] of parseCoordinates(MANUAL_USED_COORDINATES).parsed) manualUsed.add(keyOf(x, y));
 
   setAdminMode(isAdmin, isAdmin ? "관리자 모드" : "보기 전용 모드");
 
@@ -135,16 +144,17 @@ async function pasteInto(textarea) {
 async function addCoordinates(text) {
   const { parsed, invalid } = parseCoordinates(text);
   const requested = parsed.map(([x, y]) => keyOf(x, y));
-  const add = requested.filter((coord) => layers.supply.has(coord));
+  const add = requested.filter((coord) => layers.supply.has(coord) || manualUsed.has(coord));
+  const manualCount = add.filter((coord) => manualUsed.has(coord) && !layers.supply.has(coord)).length;
   const notSupply = requested.length - add.length;
   const before = layers.used.size;
   await mutateUsed(
     { add },
-    `사용 위치 추가 요청 ${add.length}개${notSupply ? `, 보급품 아님 ${notSupply}개` : ""}${invalid.length ? `, 오류 ${invalid.length}개` : ""}`,
+    `사용 위치 추가 요청 ${add.length}개${manualCount ? `, 수기 보정 ${manualCount}개` : ""}${notSupply ? `, 보급품 아님 ${notSupply}개` : ""}${invalid.length ? `, 오류 ${invalid.length}개` : ""}`,
   );
   const added = layers.used.size - before;
   setMessage(
-    `사용 위치 추가 ${added}개, 중복 ${add.length - added}개${notSupply ? `, 보급품 아님 ${notSupply}개` : ""}${invalid.length ? `, 오류 ${invalid.length}개` : ""}`,
+    `사용 위치 추가 ${added}개, 중복 ${add.length - added}개${manualCount ? `, 수기 보정 ${manualCount}개` : ""}${notSupply ? `, 보급품 아님 ${notSupply}개` : ""}${invalid.length ? `, 오류 ${invalid.length}개` : ""}`,
   );
 }
 
@@ -222,6 +232,22 @@ function getRemainingSupply() {
   return remaining;
 }
 
+function getConfirmedUsed() {
+  const used = new Set();
+  for (const coord of layers.used) {
+    if (layers.supply.has(coord)) used.add(coord);
+  }
+  return used;
+}
+
+function getManualUsed() {
+  const used = new Set();
+  for (const coord of layers.used) {
+    if (!layers.supply.has(coord)) used.add(coord);
+  }
+  return used;
+}
+
 function renderLayerList(layer, target, countTarget, query) {
   const entries = Array.from(layer).filter((coord) => !query || coord.includes(query));
   const layerName = target.dataset.layer;
@@ -242,13 +268,14 @@ function renderLayerList(layer, target, countTarget, query) {
 
   const rows = visible
     .map((coord) => {
+      const isManual = layerName === "used" && !layers.supply.has(coord);
       const secondaryAction =
         layerName === "supply"
           ? `<button class="row-action admin-only" type="button" data-action="mark-used" data-layer="${layerName}" data-coord="${coord}">사용</button>`
           : `<button class="row-action delete admin-only" type="button" data-action="remove" data-layer="${layerName}" data-coord="${coord}">취소</button>`;
       return `
-        <div class="coord-row">
-          <button class="coord-jump" type="button" data-action="jump" data-coord="${coord}">${coord}</button>
+        <div class="coord-row${isManual ? " manual-row" : ""}">
+          <button class="coord-jump" type="button" data-action="jump" data-coord="${coord}" ${isManual ? `title="${MANUAL_USED_NOTE}"` : ""}>${isManual ? '<b class="dot manual-dot"></b>' : ""}${coord}</button>
           ${secondaryAction}
         </div>
       `;
@@ -366,7 +393,8 @@ function draw() {
   ctx.fillRect(0, 0, rect.width, rect.height);
   drawBoundaries(rect);
   drawLayer(rect, getRemainingSupply(), "#6aa6ff", 1);
-  drawLayer(rect, layers.used, "#ff6b6b", 1);
+  drawLayer(rect, getConfirmedUsed(), "#ff6b6b", 1);
+  drawLayer(rect, getManualUsed(), "#b779ff", 1, MANUAL_USED_NOTE);
   drawFrame(rect);
 }
 
@@ -395,7 +423,7 @@ function drawBoundaries(rect) {
   }
 }
 
-function drawLayer(rect, layer, color, alpha) {
+function drawLayer(rect, layer, color, alpha, note = "") {
   const iconSize = markerSize(rect);
   const showLabels = view.size <= 180;
   for (const coord of layer) {
@@ -403,7 +431,7 @@ function drawLayer(rect, layer, color, alpha) {
     if (x < view.x || x > view.x + view.size || y < view.y || y > view.y + view.size) continue;
     const p = mapToScreen(x, y, rect);
     drawMarker(p.x, p.y, iconSize, color, alpha);
-    if (showLabels) drawCoordinateLabel(p.x, p.y, iconSize, coord, color);
+    if (showLabels) drawCoordinateLabel(p.x, p.y, iconSize, note ? `${coord} 수기` : coord, color);
   }
 }
 
@@ -594,9 +622,12 @@ canvas.addEventListener("mousemove", (event) => {
   const coord = screenToMap(canvasPoint(event));
   const key = keyOf(coord.x, coord.y);
   const tags = [];
-  if (layers.used.has(key)) tags.push("사용");
+  if (layers.used.has(key) && !layers.supply.has(key)) tags.push("수기 보정");
+  else if (layers.used.has(key)) tags.push("사용");
   else if (layers.supply.has(key)) tags.push("보급품");
   hoverCoord.textContent = `좌표: ${coord.x},${coord.y}${tags.length ? ` · ${tags.join("/")}` : ""}`;
+  const manual = findNearestVisibleCoordinate(getManualUsed(), canvasPoint(event));
+  canvas.title = manual ? `${manual}: ${MANUAL_USED_NOTE}` : "";
   if (!isDragging) return;
   const point = canvasPoint(event);
   const moved = Math.hypot(point.x - dragStart.x, point.y - dragStart.y);

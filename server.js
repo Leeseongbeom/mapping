@@ -16,6 +16,12 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const SUPABASE_TABLE = process.env.SUPABASE_TABLE || "used_coordinates";
 const USE_SUPABASE = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
 const SUPPLY_SET = new Set(parseCoordinates(INITIAL_SUPPLY).map(([x, y]) => `${x},${y}`));
+const MANUAL_USED_SET = new Set(
+  parseCoordinates(`
+608,203 422,223 431,777 435,780 393,203 430,208 196,238
+190,394 586,199 218,423 761,163 249,849 250,844
+`).map(([x, y]) => `${x},${y}`),
+);
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -68,12 +74,16 @@ function isSupplyCoordinate(value) {
   return isCoordinate(value) && SUPPLY_SET.has(value);
 }
 
+function isUsedCoordinate(value) {
+  return isCoordinate(value) && (SUPPLY_SET.has(value) || MANUAL_USED_SET.has(value));
+}
+
 async function loadUsed() {
   if (USE_SUPABASE) return await loadUsedFromSupabase();
 
   try {
     const data = JSON.parse(await fs.readFile(DATA_FILE, "utf8"));
-    return Array.isArray(data.used) ? data.used.filter(isSupplyCoordinate) : [];
+    return Array.isArray(data.used) ? data.used.filter(isUsedCoordinate) : [];
   } catch {
     return [];
   }
@@ -82,7 +92,7 @@ async function loadUsed() {
 async function saveUsed(used) {
   if (USE_SUPABASE) return await saveUsedToSupabase(used);
 
-  const clean = Array.from(new Set(used.filter(isSupplyCoordinate)));
+  const clean = Array.from(new Set(used.filter(isUsedCoordinate)));
   await fs.mkdir(DATA_DIR, { recursive: true });
   await fs.writeFile(DATA_FILE, JSON.stringify({ used: clean }, null, 2), "utf8");
 }
@@ -116,11 +126,11 @@ async function loadUsedFromSupabase() {
   const rows = await supabaseRequest(
     supabaseTableUrl("?select=coord&order=position.asc"),
   );
-  return Array.isArray(rows) ? rows.map((row) => row.coord).filter(isSupplyCoordinate) : [];
+  return Array.isArray(rows) ? rows.map((row) => row.coord).filter(isUsedCoordinate) : [];
 }
 
 async function saveUsedToSupabase(used) {
-  const clean = Array.from(new Set(used.filter(isSupplyCoordinate)));
+  const clean = Array.from(new Set(used.filter(isUsedCoordinate)));
   await supabaseRequest(supabaseTableUrl("?coord=not.is.null"), {
     method: "DELETE",
     headers: { Prefer: "return=minimal" },
@@ -180,9 +190,9 @@ async function handleApi(req, res, url) {
     let used = await loadUsed();
     if (body.clear === true) used = [];
     for (const coord of Array.isArray(body.add) ? body.add : []) {
-      if (isSupplyCoordinate(coord) && !used.includes(coord)) used.push(coord);
+      if (isUsedCoordinate(coord) && !used.includes(coord)) used.push(coord);
     }
-    const remove = new Set((Array.isArray(body.remove) ? body.remove : []).filter(isSupplyCoordinate));
+    const remove = new Set((Array.isArray(body.remove) ? body.remove : []).filter(isUsedCoordinate));
     if (remove.size) used = used.filter((coord) => !remove.has(coord));
     await saveUsed(used);
     return json(res, 200, { used });
