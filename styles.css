@@ -331,13 +331,17 @@ canvas {
 .legend {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  white-space: nowrap;
+  justify-content: center;
+  gap: 8px 12px;
+  flex-wrap: wrap;
   color: var(--muted);
 }
 
-.legend b {
-  margin-right: 4px;
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
 }
 
 .dot {
