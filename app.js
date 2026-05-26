@@ -61,6 +61,7 @@ const updatedAtLabel = document.getElementById("updatedAtLabel");
 const bulkAddSection = document.getElementById("bulkAddSection");
 const buildingToggle = document.getElementById("buildingToggle");
 const incendiaryToggle = document.getElementById("incendiaryToggle");
+const statsLabel = document.getElementById("statsLabel");
 
 const layers = {
   supply: new Set(),
@@ -73,6 +74,10 @@ const API_BASE = location.protocol === "file:" ? "http://127.0.0.1:4174" : "";
 const ADMIN_TOKEN_KEY = "lastwar-admin-token";
 const BUILDING_TOGGLE_KEY = "lastwar-show-buildings";
 const INCENDIARY_TOGGLE_KEY = "lastwar-show-incendiary";
+const CLIENT_ID_KEY = "lastwar-client-id";
+const VISIT_RECORDED_KEY = "lastwar-visit-recorded-date";
+const HEARTBEAT_MS = 30 * 1000;
+const STATS_POLL_MS = 20 * 1000;
 
 let view = { x: 0, y: 0, size: MAP_SIZE };
 let isDragging = false;
@@ -86,6 +91,9 @@ let latestUpdatedAt = "";
 let showBuildings = localStorage.getItem(BUILDING_TOGGLE_KEY) === "1";
 let showIncendiary = localStorage.getItem(INCENDIARY_TOGGLE_KEY) === "1";
 let hoverMapPoint = null;
+let clientId = "";
+let heartbeatTimer = null;
+let statsTimer = null;
 
 function keyOf(x, y) {
   return `${x},${y}`;
@@ -165,6 +173,85 @@ function setAdminMode(nextIsAdmin, text) {
   document.body.classList.toggle("is-admin", isAdmin);
   bulkAddSection.hidden = !isAdmin;
   adminState.textContent = text || (isAdmin ? "관리자 모드" : "보기 전용 모드");
+  if (isAdmin) startStatsPolling();
+  else stopStatsPolling();
+}
+
+function getOrCreateClientId() {
+  try {
+    let id = localStorage.getItem(CLIENT_ID_KEY);
+    if (!id) {
+      id = typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `c-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      localStorage.setItem(CLIENT_ID_KEY, id);
+    }
+    return id;
+  } catch {
+    return `c-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+}
+
+function todayUtcDateString() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+async function sendHeartbeat() {
+  if (!clientId) return;
+  try {
+    await fetch(`${API_BASE}/api/heartbeat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId }),
+      keepalive: true,
+    });
+  } catch {}
+}
+
+async function recordVisitIfNeeded() {
+  const today = todayUtcDateString();
+  try {
+    if (localStorage.getItem(VISIT_RECORDED_KEY) === today) {
+      sendHeartbeat();
+      return;
+    }
+  } catch {}
+  try {
+    await fetch(`${API_BASE}/api/visit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId }),
+      keepalive: true,
+    });
+    try {
+      localStorage.setItem(VISIT_RECORDED_KEY, today);
+    } catch {}
+  } catch {}
+}
+
+async function refreshStats() {
+  if (!isAdmin) return;
+  try {
+    const data = await apiFetch("/api/stats");
+    if (!statsLabel) return;
+    statsLabel.textContent = `접속 ${Number(data.active) || 0} · 오늘 ${Number(data.today) || 0} · 누적 ${Number(data.total) || 0}`;
+  } catch (error) {
+    if (error.status === 401 || error.status === 403) stopStatsPolling();
+  }
+}
+
+function startStatsPolling() {
+  stopStatsPolling();
+  refreshStats();
+  statsTimer = setInterval(refreshStats, STATS_POLL_MS);
+}
+
+function stopStatsPolling() {
+  if (statsTimer) {
+    clearInterval(statsTimer);
+    statsTimer = null;
+  }
+  if (statsLabel) statsLabel.textContent = "접속 -";
 }
 
 async function pasteInto(textarea) {
@@ -1118,4 +1205,15 @@ buildingToggle.setAttribute("aria-pressed", String(showBuildings));
 buildingToggle.classList.toggle("is-active", showBuildings);
 incendiaryToggle.setAttribute("aria-pressed", String(showIncendiary));
 incendiaryToggle.classList.toggle("is-active", showIncendiary);
+
+clientId = getOrCreateClientId();
+recordVisitIfNeeded();
+heartbeatTimer = setInterval(sendHeartbeat, HEARTBEAT_MS);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    sendHeartbeat();
+    if (isAdmin) refreshStats();
+  }
+});
+
 loadInitialData();

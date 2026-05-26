@@ -11,6 +11,10 @@ const ADMIN_CODE = process.env.ADMIN_CODE || "change-me";
 const TOKEN_TTL_MS = 1000 * 60 * 60 * 12;
 const DATA_DIR = path.join(__dirname, "data");
 const DATA_FILE = path.join(DATA_DIR, "used.json");
+const VISITS_FILE = path.join(DATA_DIR, "visits.json");
+const ACTIVE_TTL_MS = 90 * 1000;
+const HEARTBEAT_MAX_CLIENTS = 10000;
+const activeClients = new Map();
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const SUPABASE_TABLE = process.env.SUPABASE_TABLE || "used_coordinates";
@@ -162,6 +166,105 @@ async function saveUsedToSupabase(used) {
   return { used: clean, updatedAt };
 }
 
+function pruneActiveClients(now = Date.now()) {
+  const cutoff = now - ACTIVE_TTL_MS;
+  for (const [id, ts] of activeClients) {
+    if (ts < cutoff) activeClients.delete(id);
+  }
+}
+
+function recordHeartbeat(clientId) {
+  if (typeof clientId !== "string" || !clientId || clientId.length > 80) return;
+  if (activeClients.size > HEARTBEAT_MAX_CLIENTS) pruneActiveClients();
+  activeClients.set(clientId, Date.now());
+}
+
+function activeCount() {
+  pruneActiveClients();
+  return activeClients.size;
+}
+
+function todayUtcDateString() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+async function loadVisitsLocal() {
+  try {
+    const data = JSON.parse(await fs.readFile(VISITS_FILE, "utf8"));
+    return data && typeof data === "object" ? data : {};
+  } catch {
+    return {};
+  }
+}
+
+async function recordVisitLocal() {
+  const today = todayUtcDateString();
+  const visits = await loadVisitsLocal();
+  visits[today] = (Number(visits[today]) || 0) + 1;
+  await fs.mkdir(DATA_DIR, { recursive: true });
+  await fs.writeFile(VISITS_FILE, JSON.stringify(visits), "utf8");
+}
+
+async function loadVisitStatsLocal() {
+  const visits = await loadVisitsLocal();
+  const today = todayUtcDateString();
+  let total = 0;
+  for (const value of Object.values(visits)) total += Number(value) || 0;
+  return { today: Number(visits[today]) || 0, total };
+}
+
+async function supabaseRpcUrl(name) {
+  const base = SUPABASE_URL.endsWith("/") ? SUPABASE_URL.slice(0, -1) : SUPABASE_URL;
+  return `${base}/rest/v1/rpc/${name}`;
+}
+
+async function supabaseVisitsUrl(search = "") {
+  const base = SUPABASE_URL.endsWith("/") ? SUPABASE_URL.slice(0, -1) : SUPABASE_URL;
+  return `${base}/rest/v1/visits${search}`;
+}
+
+async function recordVisitSupabase() {
+  await supabaseRequest(await supabaseRpcUrl("increment_visit"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
+    body: JSON.stringify({ target_date: todayUtcDateString() }),
+  });
+}
+
+async function loadVisitStatsSupabase() {
+  const rows = await supabaseRequest(await supabaseVisitsUrl("?select=visit_date,count"));
+  const today = todayUtcDateString();
+  let total = 0;
+  let todayCount = 0;
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const n = Number(row.count) || 0;
+    total += n;
+    if (row.visit_date === today) todayCount = n;
+  }
+  return { today: todayCount, total };
+}
+
+async function recordVisit() {
+  try {
+    if (USE_SUPABASE) await recordVisitSupabase();
+    else await recordVisitLocal();
+    return true;
+  } catch (error) {
+    console.warn("recordVisit failed:", error.message);
+    return false;
+  }
+}
+
+async function loadVisitStats() {
+  try {
+    if (USE_SUPABASE) return await loadVisitStatsSupabase();
+    return await loadVisitStatsLocal();
+  } catch (error) {
+    console.warn("loadVisitStats failed:", error.message);
+    return { today: 0, total: 0 };
+  }
+}
+
 function sign(payload) {
   return crypto.createHmac("sha256", ADMIN_CODE).update(payload).digest("base64url");
 }
@@ -195,6 +298,27 @@ async function handleApi(req, res, url) {
     const body = await readBody(req);
     if (body.code === ADMIN_CODE) return json(res, 200, { token: createToken() });
     return json(res, 401, { error: "invalid admin code" });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/heartbeat") {
+    const body = await readBody(req).catch(() => ({}));
+    recordHeartbeat(typeof body.clientId === "string" ? body.clientId : "");
+    return json(res, 200, { active: activeCount() });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/visit") {
+    const body = await readBody(req).catch(() => ({}));
+    if (typeof body.clientId === "string" && body.clientId) {
+      recordHeartbeat(body.clientId);
+    }
+    await recordVisit();
+    return json(res, 200, { ok: true });
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/stats") {
+    if (!verifyToken(req)) return json(res, 401, { error: "admin required" });
+    const stats = await loadVisitStats();
+    return json(res, 200, { active: activeCount(), today: stats.today, total: stats.total });
   }
 
   if (req.method === "POST" && url.pathname === "/api/used") {
