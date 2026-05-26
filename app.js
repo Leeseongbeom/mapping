@@ -1,6 +1,8 @@
-import { INITIAL_SUPPLY } from "./supply-data.js";
+import { SUPPLY_BY_LEVEL } from "./supply-data.js";
 
 const MAP_SIZE = 1000;
+const LEVELS = Object.keys(SUPPLY_BY_LEVEL).sort((a, b) => Number(a) - Number(b));
+const DEFAULT_LEVEL = "3";
 const BOUNDARIES = [0, 74, 149, 224, 299, 374, 449, 549, 624, 699, 774, 849, 924, 999];
 const BUILDING_NAMES = {
   1: "마을",
@@ -62,13 +64,17 @@ const bulkAddSection = document.getElementById("bulkAddSection");
 const buildingToggle = document.getElementById("buildingToggle");
 const incendiaryToggle = document.getElementById("incendiaryToggle");
 const statsLabel = document.getElementById("statsLabel");
+const levelTabs = document.getElementById("levelTabs");
 
 const layers = {
   supply: new Set(),
   used: new Set(),
+  supplyByLevel: {},
+  usedByLevel: {},
 };
 const buildings = createBuildings();
 const STORAGE_KEY = "lastwar-coordinate-map-v2";
+const LEVEL_STORAGE_KEY = "lastwar-active-supply-level";
 const LEGACY_STORAGE_KEY = "lastwar-coordinate-map-v1";
 const API_BASE = location.protocol === "file:" ? "http://127.0.0.1:4174" : "";
 const ADMIN_TOKEN_KEY = "lastwar-admin-token";
@@ -94,9 +100,51 @@ let hoverMapPoint = null;
 let clientId = "";
 let heartbeatTimer = null;
 let statsTimer = null;
+let activeLevel = normalizeLevel(localStorage.getItem(LEVEL_STORAGE_KEY) || DEFAULT_LEVEL);
+let pulses = [];
+let pulseFrame = null;
 
 function keyOf(x, y) {
   return `${x},${y}`;
+}
+
+function normalizeLevel(value) {
+  const level = String(value || DEFAULT_LEVEL);
+  return LEVELS.includes(level) ? level : DEFAULT_LEVEL;
+}
+
+function emptyUsedByLevel() {
+  return Object.fromEntries(LEVELS.map((level) => [level, new Set()]));
+}
+
+function normalizeUsedByLevel(input) {
+  const next = emptyUsedByLevel();
+  if (!input || typeof input !== "object") return next;
+  for (const level of LEVELS) {
+    for (const coord of Array.isArray(input[level]) ? input[level] : []) {
+      if (isCoordinateText(coord)) next[level].add(coord);
+    }
+  }
+  return next;
+}
+
+function isCoordinateText(value) {
+  return typeof value === "string" && /^\d{1,3},\d{1,3}$/.test(value);
+}
+
+function syncActiveLayers() {
+  activeLevel = normalizeLevel(activeLevel);
+  layers.supply = layers.supplyByLevel[activeLevel] || new Set();
+  layers.used = layers.usedByLevel[activeLevel] || new Set();
+}
+
+function applyState(data) {
+  layers.usedByLevel = normalizeUsedByLevel(data.usedByLevel);
+  if (!data.usedByLevel && Array.isArray(data.used)) {
+    layers.usedByLevel[DEFAULT_LEVEL] = new Set(data.used.filter(isCoordinateText));
+  }
+  syncActiveLayers();
+  latestUpdatedAt = data.updatedAt || "";
 }
 
 function parseCoordinates(text) {
@@ -122,14 +170,21 @@ function parseCoordinates(text) {
 }
 
 async function loadInitialData() {
-  for (const [x, y] of parseCoordinates(INITIAL_SUPPLY).parsed) layers.supply.add(keyOf(x, y));
+  for (const level of LEVELS) {
+    layers.supplyByLevel[level] = new Set();
+    layers.usedByLevel[level] = new Set();
+    for (const [x, y] of parseCoordinates(SUPPLY_BY_LEVEL[level] || "").parsed) {
+      layers.supplyByLevel[level].add(keyOf(x, y));
+    }
+  }
+  syncActiveLayers();
 
   setAdminMode(isAdmin, isAdmin ? "관리자 모드" : "보기 전용 모드");
+  renderLevelTabs();
 
   try {
     const data = await apiFetch("/api/state");
-    layers.used = new Set(Array.isArray(data.used) ? data.used : []);
-    latestUpdatedAt = data.updatedAt || "";
+    applyState(data);
     refresh("서버의 사용 목록을 불러왔습니다.");
     return;
   } catch {
@@ -140,7 +195,13 @@ async function loadInitialData() {
   if (saved) {
     try {
       const parsed = JSON.parse(saved);
-      layers.used = new Set(Array.isArray(parsed.used) ? parsed.used : []);
+      if (parsed.usedByLevel) {
+        layers.usedByLevel = normalizeUsedByLevel(parsed.usedByLevel);
+      } else {
+        layers.usedByLevel = emptyUsedByLevel();
+        layers.usedByLevel[DEFAULT_LEVEL] = new Set(Array.isArray(parsed.used) ? parsed.used.filter(isCoordinateText) : []);
+      }
+      syncActiveLayers();
       latestUpdatedAt = parsed.updatedAt || "";
       refresh("저장된 좌표를 불러왔습니다.");
       return;
@@ -148,7 +209,8 @@ async function loadInitialData() {
       localStorage.removeItem(STORAGE_KEY);
     }
   }
-  for (const [x, y] of parseCoordinates(INITIAL_USED).parsed) layers.used.add(keyOf(x, y));
+  for (const [x, y] of parseCoordinates(INITIAL_USED).parsed) layers.usedByLevel[DEFAULT_LEVEL].add(keyOf(x, y));
+  syncActiveLayers();
   latestUpdatedAt = new Date().toISOString();
   refresh("사진 좌표를 불러왔습니다. 파란 보급품 핀을 클릭하면 사용 목록으로 이동합니다.");
 }
@@ -175,6 +237,27 @@ function setAdminMode(nextIsAdmin, text) {
   adminState.textContent = text || (isAdmin ? "관리자 모드" : "보기 전용 모드");
   if (isAdmin) startStatsPolling();
   else stopStatsPolling();
+}
+
+function renderLevelTabs() {
+  for (const button of levelTabs.querySelectorAll("button[data-level]")) {
+    const selected = button.dataset.level === activeLevel;
+    button.classList.toggle("is-active", selected);
+    button.setAttribute("aria-selected", String(selected));
+  }
+}
+
+function setActiveLevel(level) {
+  activeLevel = normalizeLevel(level);
+  localStorage.setItem(LEVEL_STORAGE_KEY, activeLevel);
+  syncActiveLayers();
+  pulses = [];
+  if (pulseFrame) {
+    cancelAnimationFrame(pulseFrame);
+    pulseFrame = null;
+  }
+  renderLevelTabs();
+  refresh(`${activeLevel}단계 보급품을 표시합니다.`);
 }
 
 function getOrCreateClientId() {
@@ -277,6 +360,7 @@ async function addCoordinates(text) {
   );
   if (!ok) return;
   const added = layers.used.size - before;
+  if (add[0]) startCoordinatePulse(add[0], markerColorForCoordinate(add[0]));
   setMessage(
     `반영되었습니다. 추가 ${added}개, 중복 ${add.length - added}개${manualCount ? `, 수기 보정 ${manualCount}개` : ""}${invalid.length ? `, 오류 ${invalid.length}개` : ""}`,
   );
@@ -307,10 +391,12 @@ function refresh(text) {
 }
 
 function saveLocalFallback() {
+  const usedByLevel = Object.fromEntries(LEVELS.map((level) => [level, Array.from(layers.usedByLevel[level] || [])]));
   localStorage.setItem(
     STORAGE_KEY,
     JSON.stringify({
-      used: Array.from(layers.used),
+      used: usedByLevel[DEFAULT_LEVEL],
+      usedByLevel,
       updatedAt: latestUpdatedAt,
     }),
   );
@@ -326,10 +412,9 @@ async function mutateUsed(payload, pendingText) {
     if (pendingText) setMessage(pendingText);
     const data = await apiFetch("/api/used", {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ level: activeLevel, ...payload }),
     });
-    layers.used = new Set(Array.isArray(data.used) ? data.used : []);
-    latestUpdatedAt = data.updatedAt || new Date().toISOString();
+    applyState({ ...data, updatedAt: data.updatedAt || new Date().toISOString() });
     refresh("반영되었습니다.");
     showToast("반영되었습니다.");
     return true;
@@ -499,21 +584,33 @@ function clampView() {
 
 async function applyMapClick(point) {
   if (!isAdmin) {
-    setMessage("관리자 코드 입력 후 수정할 수 있습니다.");
+    const target = findNearestVisibleCoordinate(layers.used, point) || findNearestVisibleCoordinate(getRemainingSupply(), point);
+    if (target) {
+      startCoordinatePulse(target, markerColorForCoordinate(target), false);
+      setMessage(`${target} 위치를 확인했습니다.`);
+    } else {
+      setMessage("관리자 코드 입력 후 수정할 수 있습니다.");
+    }
     return;
   }
 
   const used = findNearestVisibleCoordinate(layers.used, point);
   if (used) {
-    await mutateUsed({ remove: [used] });
-    setMessage(`${used} 사용 표시를 취소했습니다.`);
+    const ok = await mutateUsed({ remove: [used] });
+    if (ok) {
+      startCoordinatePulse(used, layers.supply.has(used) ? "#6aa6ff" : "#b779ff", false);
+      setMessage(`${used} 사용 표시를 취소했습니다.`);
+    }
     return;
   }
 
   const supply = findNearestVisibleCoordinate(getRemainingSupply(), point);
   if (supply) {
-    await mutateUsed({ add: [supply] });
-    setMessage(`${supply} 보급품을 사용한 것으로 표시했습니다.`);
+    const ok = await mutateUsed({ add: [supply] });
+    if (ok) {
+      startCoordinatePulse(supply, "#ff6b6b", false);
+      setMessage(`${supply} 보급품을 사용한 것으로 표시했습니다.`);
+    }
   }
 }
 
@@ -557,13 +654,52 @@ function findNearestBuilding(point) {
 }
 
 function jumpToCoordinate(coordText) {
+  focusCoordinate(coordText);
+  startCoordinatePulse(coordText, markerColorForCoordinate(coordText), false);
+  setMessage(`${coordText} 위치로 이동했습니다.`);
+}
+
+function focusCoordinate(coordText) {
   const [x, y] = coordText.split(",").map(Number);
   view.size = Math.min(view.size, 80);
   view.x = x - view.size / 2;
   view.y = y - view.size / 2;
   clampView();
   draw();
-  setMessage(`${coordText} 위치로 이동했습니다.`);
+}
+
+function coordinateIsInView(coordText) {
+  const [x, y] = coordText.split(",").map(Number);
+  return x >= view.x && x <= view.x + view.size && y >= view.y && y <= view.y + view.size;
+}
+
+function markerColorForCoordinate(coordText) {
+  if (layers.used.has(coordText) && !layers.supply.has(coordText)) return "#b779ff";
+  if (layers.used.has(coordText)) return "#ff6b6b";
+  if (layers.supply.has(coordText)) return "#6aa6ff";
+  return "#b779ff";
+}
+
+function startCoordinatePulse(coordText, color = markerColorForCoordinate(coordText), shouldFocus = true) {
+  if (!isCoordinateText(coordText)) return;
+  if (shouldFocus && !coordinateIsInView(coordText)) focusCoordinate(coordText);
+  pulses = pulses.filter((pulse) => pulse.coord !== coordText);
+  pulses.push({ coord: coordText, color, startedAt: performance.now(), duration: 1200 });
+  draw();
+  schedulePulseFrame();
+}
+
+function schedulePulseFrame() {
+  if (pulseFrame) return;
+  pulseFrame = requestAnimationFrame(animatePulses);
+}
+
+function animatePulses() {
+  pulseFrame = null;
+  const now = performance.now();
+  pulses = pulses.filter((pulse) => now - pulse.startedAt < pulse.duration);
+  draw();
+  if (pulses.length) schedulePulseFrame();
 }
 
 async function handleListAction(event) {
@@ -578,13 +714,19 @@ async function handleListAction(event) {
     return;
   }
   if (action === "mark-used") {
-    await mutateUsed({ add: [coord] });
-    setMessage(`${coord} 사용한 보급품으로 표시했습니다.`);
+    const ok = await mutateUsed({ add: [coord] });
+    if (ok) {
+      startCoordinatePulse(coord, "#ff6b6b");
+      setMessage(`${coord} 사용한 보급품으로 표시했습니다.`);
+    }
     return;
   }
   if (action === "remove") {
-    await mutateUsed({ remove: [coord] });
-    setMessage(`${coord} 사용 표시를 취소했습니다.`);
+    const ok = await mutateUsed({ remove: [coord] });
+    if (ok) {
+      startCoordinatePulse(coord, layers.supply.has(coord) ? "#6aa6ff" : "#b779ff");
+      setMessage(`${coord} 사용 표시를 취소했습니다.`);
+    }
   }
 }
 
@@ -604,6 +746,7 @@ function draw() {
   drawLayer(rect, getRemainingSupply(), "#6aa6ff", 1);
   drawLayer(rect, getConfirmedUsed(), "#ff6b6b", 1);
   drawManualLayer(rect, getManualUsed(), "#b779ff");
+  drawPulses(rect);
   if (showIncendiary && hoverMapPoint) {
     drawIncendiaryRange(rect, hoverMapPoint.x, hoverMapPoint.y);
   }
@@ -835,6 +978,40 @@ function drawManualRange(rect, x, y, color) {
   ctx.restore();
 }
 
+function drawPulses(rect) {
+  if (!pulses.length) return;
+  const now = performance.now();
+  const baseSize = markerSize(rect);
+  for (const pulse of pulses) {
+    const [x, y] = pulse.coord.split(",").map(Number);
+    if (x < view.x || x > view.x + view.size || y < view.y || y > view.y + view.size) continue;
+    const elapsed = now - pulse.startedAt;
+    const progress = Math.max(0, Math.min(1, elapsed / pulse.duration));
+    const p = mapToScreen(x, y, rect);
+    const maxRadius = Math.max(20, baseSize * 2.6);
+
+    ctx.save();
+    ctx.lineWidth = Math.max(2, baseSize * 0.13);
+    for (let i = 0; i < 3; i += 1) {
+      const phase = progress - i * 0.18;
+      if (phase < 0 || phase > 1) continue;
+      const ease = 1 - Math.pow(1 - phase, 2);
+      const radius = baseSize * 0.55 + ease * maxRadius;
+      ctx.globalAlpha = Math.max(0, 0.75 * (1 - phase));
+      ctx.strokeStyle = pulse.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = Math.max(0, 0.45 * (1 - progress));
+    ctx.fillStyle = pulse.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, Math.max(4, baseSize * 0.4), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
 function markerSize(rect) {
   const pixelsPerCoordinate = rect.width / view.size;
   return Math.max(4, Math.min(34, 3.5 + pixelsPerCoordinate * 2.8));
@@ -1000,9 +1177,9 @@ function logoutAdmin(text = "보기 전용 모드") {
 document.getElementById("pasteAddButton").addEventListener("click", () => pasteInto(addInput));
 document.getElementById("addButton").addEventListener("click", () => addCoordinates(addInput.value));
 document.getElementById("clearButton").addEventListener("click", () => {
-  if (!confirm("사용한 보급품 목록을 모두 비울까요?")) return;
+  if (!confirm(`${activeLevel}단계 사용한 보급품 목록을 모두 비울까요?`)) return;
   mutateUsed({ clear: true }).then((ok) => {
-    if (ok) setMessage("사용한 보급품 목록을 모두 비웠습니다.");
+    if (ok) setMessage(`${activeLevel}단계 사용한 보급품 목록을 모두 비웠습니다.`);
   });
 });
 document.getElementById("fitButton").addEventListener("click", () => {
@@ -1039,6 +1216,11 @@ adminCodeInput.addEventListener("keydown", (event) => {
 searchInput.addEventListener("input", renderList);
 supplyList.addEventListener("click", handleListAction);
 usedList.addEventListener("click", handleListAction);
+levelTabs.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-level]");
+  if (!button) return;
+  setActiveLevel(button.dataset.level);
+});
 
 canvas.addEventListener("mousemove", (event) => {
   const coord = screenToMap(canvasPoint(event));

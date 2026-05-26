@@ -24,8 +24,15 @@
             <button id="buildingToggle" type="button" aria-pressed="false">건물 표시</button>
             <button id="incendiaryToggle" type="button" aria-pressed="false" title="9×9 연소탄 범위를 커서 위치에 미리 표시합니다.">연소탄</button>
             <button id="fitButton" type="button">전체 보기</button>
-            <button id="clearButton" class="admin-only" type="button">사용 전체 취소</button>
+            <button id="clearButton" class="admin-only" type="button">현재 단계 사용 전체 취소</button>
           </div>
+        </div>
+        <div id="levelTabs" class="level-tabs" role="tablist" aria-label="보급품 단계">
+          <button type="button" data-level="3" role="tab" aria-selected="true">3단계</button>
+          <button type="button" data-level="4" role="tab" aria-selected="false">4단계</button>
+          <button type="button" data-level="5" role="tab" aria-selected="false">5단계</button>
+          <button type="button" data-level="6" role="tab" aria-selected="false">6단계</button>
+          <button type="button" data-level="7" role="tab" aria-selected="false">7단계</button>
         </div>
         <div class="map-wrap">
           <canvas id="mapCanvas" width="1000" height="1000"></canvas>

@@ -109,7 +109,7 @@ select {
 
 .map-panel {
   display: grid;
-  grid-template-rows: auto auto auto;
+  grid-template-rows: auto auto auto auto;
   padding: 18px;
 }
 
@@ -258,6 +258,39 @@ button.primary {
 button.primary:hover {
   background: linear-gradient(180deg, #7eb1ff 0%, #5b96ff 100%);
   color: #0a0f1c;
+}
+
+.level-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 0 0 14px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+
+.level-tabs::-webkit-scrollbar {
+  height: 6px;
+}
+
+.level-tabs::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+}
+
+.level-tabs button {
+  min-width: 68px;
+  min-height: 34px;
+  flex: 0 0 auto;
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+.level-tabs button.is-active {
+  border-color: rgba(106, 166, 255, 0.72);
+  background: linear-gradient(180deg, rgba(106, 166, 255, 0.26) 0%, rgba(106, 166, 255, 0.12) 100%);
+  color: #ffffff;
 }
 
 button.is-active,

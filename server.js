@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { INITIAL_SUPPLY } from "./supply-data.js";
+import { SUPPLY_BY_LEVEL } from "./supply-data.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 4174);
@@ -19,7 +19,11 @@ const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const SUPABASE_TABLE = process.env.SUPABASE_TABLE || "used_coordinates";
 const USE_SUPABASE = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
-const SUPPLY_SET = new Set(parseCoordinates(INITIAL_SUPPLY).map(([x, y]) => `${x},${y}`));
+const LEVELS = Object.keys(SUPPLY_BY_LEVEL).sort((a, b) => Number(a) - Number(b));
+const DEFAULT_LEVEL = "3";
+const SUPPLY_SETS = Object.fromEntries(
+  LEVELS.map((level) => [level, new Set(parseCoordinates(SUPPLY_BY_LEVEL[level]).map(([x, y]) => `${x},${y}`))]),
+);
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -54,6 +58,11 @@ function isCoordinate(value) {
   return typeof value === "string" && /^(?:[0-9]|[1-9][0-9]{1,2}),[0-9]{1,3}$/.test(value) && value.split(",").every((part) => Number(part) >= 0 && Number(part) <= 999);
 }
 
+function normalizeLevel(value) {
+  const level = String(value || DEFAULT_LEVEL);
+  return LEVELS.includes(level) ? level : DEFAULT_LEVEL;
+}
+
 function parseCoordinates(text) {
   const matches = text.match(/-?\d+/g) || [];
   const parsed = [];
@@ -69,15 +78,73 @@ function parseCoordinates(text) {
 }
 
 function isSupplyCoordinate(value) {
-  return isCoordinate(value) && SUPPLY_SET.has(value);
+  return LEVELS.some((level) => isCoordinate(value) && SUPPLY_SETS[level].has(value));
 }
 
 function isUsedCoordinate(value) {
   return isCoordinate(value);
 }
 
-async function loadUsed() {
-  return (await loadState()).used;
+function emptyUsedByLevel() {
+  return Object.fromEntries(LEVELS.map((level) => [level, []]));
+}
+
+function decodeUsedEntry(value) {
+  if (typeof value !== "string") return null;
+  const match = value.match(/^L([3-7]):(.+)$/);
+  const level = match ? normalizeLevel(match[1]) : DEFAULT_LEVEL;
+  const coord = match ? match[2] : value;
+  if (!isCoordinate(coord)) return null;
+  return { level, coord };
+}
+
+function encodeUsedEntry(level, coord) {
+  const normalizedLevel = normalizeLevel(level);
+  return normalizedLevel === DEFAULT_LEVEL ? coord : `L${normalizedLevel}:${coord}`;
+}
+
+function normalizeUsedByLevel(input) {
+  const next = emptyUsedByLevel();
+  if (!input || typeof input !== "object") return next;
+  for (const level of LEVELS) {
+    const seen = new Set();
+    for (const coord of Array.isArray(input[level]) ? input[level] : []) {
+      if (!isUsedCoordinate(coord) || seen.has(coord)) continue;
+      seen.add(coord);
+      next[level].push(coord);
+    }
+  }
+  return next;
+}
+
+function usedByLevelFromEntries(entries) {
+  const next = emptyUsedByLevel();
+  const seenByLevel = Object.fromEntries(LEVELS.map((level) => [level, new Set()]));
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    const decoded = decodeUsedEntry(entry);
+    if (!decoded || seenByLevel[decoded.level].has(decoded.coord)) continue;
+    seenByLevel[decoded.level].add(decoded.coord);
+    next[decoded.level].push(decoded.coord);
+  }
+  return next;
+}
+
+function entriesFromUsedByLevel(usedByLevel) {
+  const normalized = normalizeUsedByLevel(usedByLevel);
+  const entries = [];
+  for (const level of LEVELS) {
+    for (const coord of normalized[level]) entries.push(encodeUsedEntry(level, coord));
+  }
+  return entries;
+}
+
+function stateResponse(usedByLevel, updatedAt) {
+  const normalized = normalizeUsedByLevel(usedByLevel);
+  return {
+    used: normalized[DEFAULT_LEVEL],
+    usedByLevel: normalized,
+    updatedAt,
+  };
 }
 
 async function loadState() {
@@ -85,23 +152,23 @@ async function loadState() {
 
   try {
     const data = JSON.parse(await fs.readFile(DATA_FILE, "utf8"));
-    return {
-      used: Array.isArray(data.used) ? data.used.filter(isUsedCoordinate) : [],
-      updatedAt: typeof data.updatedAt === "string" ? data.updatedAt : null,
-    };
+    const usedByLevel = data.usedByLevel
+      ? normalizeUsedByLevel(data.usedByLevel)
+      : usedByLevelFromEntries(Array.isArray(data.used) ? data.used : []);
+    return stateResponse(usedByLevel, typeof data.updatedAt === "string" ? data.updatedAt : null);
   } catch {
-    return { used: [], updatedAt: null };
+    return stateResponse(emptyUsedByLevel(), null);
   }
 }
 
-async function saveUsed(used) {
-  if (USE_SUPABASE) return await saveUsedToSupabase(used);
+async function saveState(usedByLevel) {
+  if (USE_SUPABASE) return await saveUsedToSupabase(usedByLevel);
 
-  const clean = Array.from(new Set(used.filter(isUsedCoordinate)));
+  const clean = normalizeUsedByLevel(usedByLevel);
   const updatedAt = new Date().toISOString();
   await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.writeFile(DATA_FILE, JSON.stringify({ used: clean, updatedAt }, null, 2), "utf8");
-  return { used: clean, updatedAt };
+  await fs.writeFile(DATA_FILE, JSON.stringify({ used: clean[DEFAULT_LEVEL], usedByLevel: clean, updatedAt }, null, 2), "utf8");
+  return stateResponse(clean, updatedAt);
 }
 
 function supabaseHeaders(extra = {}) {
@@ -133,7 +200,7 @@ async function loadUsedFromSupabase() {
   const rows = await supabaseRequest(
     supabaseTableUrl("?select=coord,updated_at&order=position.asc"),
   );
-  const used = Array.isArray(rows) ? rows.map((row) => row.coord).filter(isUsedCoordinate) : [];
+  const usedByLevel = usedByLevelFromEntries(Array.isArray(rows) ? rows.map((row) => row.coord) : []);
   const updatedAt = Array.isArray(rows)
     ? rows.reduce((latest, row) => {
         if (typeof row.updated_at !== "string") return latest;
@@ -141,20 +208,21 @@ async function loadUsedFromSupabase() {
         return latest;
       }, null)
     : null;
-  return { used, updatedAt };
+  return stateResponse(usedByLevel, updatedAt);
 }
 
-async function saveUsedToSupabase(used) {
-  const clean = Array.from(new Set(used.filter(isUsedCoordinate)));
+async function saveUsedToSupabase(usedByLevel) {
+  const clean = normalizeUsedByLevel(usedByLevel);
+  const entries = entriesFromUsedByLevel(clean);
   const updatedAt = new Date().toISOString();
   await supabaseRequest(supabaseTableUrl("?coord=not.is.null"), {
     method: "DELETE",
     headers: { Prefer: "return=minimal" },
   });
 
-  if (!clean.length) return { used: clean, updatedAt };
+  if (!entries.length) return stateResponse(clean, updatedAt);
 
-  const rows = clean.map((coord, index) => ({ coord, position: index, updated_at: updatedAt }));
+  const rows = entries.map((coord, index) => ({ coord, position: index, updated_at: updatedAt }));
   await supabaseRequest(supabaseTableUrl(), {
     method: "POST",
     headers: {
@@ -163,7 +231,7 @@ async function saveUsedToSupabase(used) {
     },
     body: JSON.stringify(rows),
   });
-  return { used: clean, updatedAt };
+  return stateResponse(clean, updatedAt);
 }
 
 function pruneActiveClients(now = Date.now()) {
@@ -324,14 +392,18 @@ async function handleApi(req, res, url) {
   if (req.method === "POST" && url.pathname === "/api/used") {
     if (!verifyToken(req)) return json(res, 401, { error: "admin required" });
     const body = await readBody(req);
-    let used = await loadUsed();
+    const state = await loadState();
+    const usedByLevel = normalizeUsedByLevel(state.usedByLevel);
+    const level = normalizeLevel(body.level);
+    let used = usedByLevel[level];
     if (body.clear === true) used = [];
     for (const coord of Array.isArray(body.add) ? body.add : []) {
       if (isUsedCoordinate(coord) && !used.includes(coord)) used.push(coord);
     }
     const remove = new Set((Array.isArray(body.remove) ? body.remove : []).filter(isUsedCoordinate));
     if (remove.size) used = used.filter((coord) => !remove.has(coord));
-    return json(res, 200, await saveUsed(used));
+    usedByLevel[level] = used;
+    return json(res, 200, await saveState(usedByLevel));
   }
 
   return json(res, 404, { error: "not found" });
