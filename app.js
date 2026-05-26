@@ -268,12 +268,21 @@ function formatUpdatedAt(value) {
   if (!value) return "최신화 -";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "최신화 -";
-  return `최신화 ${date.toLocaleTimeString("ko-KR", {
+  const parts = new Intl.DateTimeFormat("ko-KR", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
     timeZone: "Asia/Seoul",
-  })}`;
+  })
+    .formatToParts(date)
+    .reduce((result, part) => {
+      result[part.type] = part.value;
+      return result;
+    }, {});
+  return `최신화 ${parts.year}.${parts.month}.${parts.day} ${parts.hour}:${parts.minute}`;
 }
 
 function renderList() {
