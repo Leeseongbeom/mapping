@@ -75,6 +75,8 @@ const BUILDING_TOGGLE_KEY = "lastwar-show-buildings";
 let view = { x: 0, y: 0, size: MAP_SIZE };
 let isDragging = false;
 let dragStart = null;
+let touchGesture = null;
+let lastTouchAt = 0;
 let adminToken = sessionStorage.getItem(ADMIN_TOKEN_KEY) || "";
 let isAdmin = Boolean(adminToken);
 let toastTimer = null;
@@ -367,6 +369,21 @@ function canvasPoint(event) {
   return { x: event.clientX - rect.left, y: event.clientY - rect.top, w: rect.width, h: rect.height };
 }
 
+function touchPoint(touch) {
+  const rect = canvas.getBoundingClientRect();
+  return { x: touch.clientX - rect.left, y: touch.clientY - rect.top, w: rect.width, h: rect.height };
+}
+
+function touchCenter(touches) {
+  const a = touchPoint(touches[0]);
+  const b = touchPoint(touches[1]);
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, w: a.w, h: a.h };
+}
+
+function touchDistance(touches) {
+  return Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+}
+
 function screenToMap(point) {
   const x = Math.floor(view.x + (point.x / point.w) * view.size);
   const y = Math.floor(view.y + (1 - point.y / point.h) * view.size);
@@ -526,7 +543,7 @@ function drawBuildings(rect) {
 
 function buildingSize(rect) {
   const pixelsPerCoordinate = rect.width / view.size;
-  return Math.max(10, Math.min(52, 8 + pixelsPerCoordinate * 4.2));
+  return Math.max(18, Math.min(86, 14 + pixelsPerCoordinate * 7));
 }
 
 function drawBuildingMarker(x, y, size, building, showName) {
@@ -875,6 +892,7 @@ canvas.addEventListener("mouseleave", () => {
   hoverCoord.textContent = "좌표: -";
 });
 canvas.addEventListener("mousedown", (event) => {
+  if (Date.now() - lastTouchAt < 500) return;
   isDragging = true;
   const point = canvasPoint(event);
   dragStart = { ...point, viewX: view.x, viewY: view.y, didDrag: false };
@@ -887,6 +905,87 @@ window.addEventListener("mouseup", (event) => {
   isDragging = false;
 });
 canvas.addEventListener("wheel", zoomAt, { passive: false });
+canvas.addEventListener(
+  "touchstart",
+  (event) => {
+    lastTouchAt = Date.now();
+    if (event.touches.length === 1) {
+      const point = touchPoint(event.touches[0]);
+      touchGesture = { type: "pan", ...point, viewX: view.x, viewY: view.y, didDrag: false };
+    } else if (event.touches.length === 2) {
+      const center = touchCenter(event.touches);
+      touchGesture = {
+        type: "pinch",
+        startDistance: Math.max(1, touchDistance(event.touches)),
+        startSize: view.size,
+        centerMap: screenToMap(center),
+      };
+    }
+    event.preventDefault();
+  },
+  { passive: false },
+);
+canvas.addEventListener(
+  "touchmove",
+  (event) => {
+    lastTouchAt = Date.now();
+    if (!touchGesture) return;
+
+    if (event.touches.length === 1 && touchGesture.type === "pan") {
+      const point = touchPoint(event.touches[0]);
+      const moved = Math.hypot(point.x - touchGesture.x, point.y - touchGesture.y);
+      if (moved > 3) touchGesture.didDrag = true;
+      const dx = ((point.x - touchGesture.x) / point.w) * view.size;
+      const dy = ((point.y - touchGesture.y) / point.h) * view.size;
+      view.x = touchGesture.viewX - dx;
+      view.y = touchGesture.viewY + dy;
+      clampView();
+      const coord = screenToMap(point);
+      hoverCoord.textContent = `좌표: ${coord.x},${coord.y}`;
+      draw();
+    } else if (event.touches.length === 2) {
+      if (touchGesture.type !== "pinch") {
+        const center = touchCenter(event.touches);
+        touchGesture = {
+          type: "pinch",
+          startDistance: Math.max(1, touchDistance(event.touches)),
+          startSize: view.size,
+          centerMap: screenToMap(center),
+        };
+      }
+      const center = touchCenter(event.touches);
+      const distance = Math.max(1, touchDistance(event.touches));
+      const newSize = Math.max(10, Math.min(MAP_SIZE, touchGesture.startSize * (touchGesture.startDistance / distance)));
+      view.x = touchGesture.centerMap.x - (center.x / center.w) * newSize;
+      view.y = touchGesture.centerMap.y - (1 - center.y / center.h) * newSize;
+      view.size = newSize;
+      clampView();
+      const coord = screenToMap(center);
+      hoverCoord.textContent = `좌표: ${coord.x},${coord.y}`;
+      draw();
+    }
+
+    event.preventDefault();
+  },
+  { passive: false },
+);
+canvas.addEventListener(
+  "touchend",
+  (event) => {
+    lastTouchAt = Date.now();
+    if (touchGesture?.type === "pan" && !touchGesture.didDrag && event.changedTouches.length === 1) {
+      applyMapClick(touchPoint(event.changedTouches[0]));
+    }
+    if (event.touches.length === 0) {
+      touchGesture = null;
+    } else if (event.touches.length === 1) {
+      const point = touchPoint(event.touches[0]);
+      touchGesture = { type: "pan", ...point, viewX: view.x, viewY: view.y, didDrag: true };
+    }
+    event.preventDefault();
+  },
+  { passive: false },
+);
 window.addEventListener("resize", draw);
 
 canvas.style.cursor = "grab";
