@@ -189,6 +189,7 @@ async function addCoordinates(text) {
   setMessage(
     `반영되었습니다. 추가 ${added}개, 중복 ${add.length - added}개${manualCount ? `, 수기 보정 ${manualCount}개` : ""}${invalid.length ? `, 오류 ${invalid.length}개` : ""}`,
   );
+  window.alert("반영되었습니다.\n표시까지 시간이 조금 걸릴 수 있습니다.");
 }
 
 function deleteCoordinates(text) {
