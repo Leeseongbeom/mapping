@@ -60,6 +60,7 @@ const toast = document.getElementById("toast");
 const updatedAtLabel = document.getElementById("updatedAtLabel");
 const bulkAddSection = document.getElementById("bulkAddSection");
 const buildingToggle = document.getElementById("buildingToggle");
+const incendiaryToggle = document.getElementById("incendiaryToggle");
 
 const layers = {
   supply: new Set(),
@@ -71,6 +72,7 @@ const LEGACY_STORAGE_KEY = "lastwar-coordinate-map-v1";
 const API_BASE = location.protocol === "file:" ? "http://127.0.0.1:4174" : "";
 const ADMIN_TOKEN_KEY = "lastwar-admin-token";
 const BUILDING_TOGGLE_KEY = "lastwar-show-buildings";
+const INCENDIARY_TOGGLE_KEY = "lastwar-show-incendiary";
 
 let view = { x: 0, y: 0, size: MAP_SIZE };
 let isDragging = false;
@@ -82,6 +84,8 @@ let isAdmin = Boolean(adminToken);
 let toastTimer = null;
 let latestUpdatedAt = "";
 let showBuildings = localStorage.getItem(BUILDING_TOGGLE_KEY) === "1";
+let showIncendiary = localStorage.getItem(INCENDIARY_TOGGLE_KEY) === "1";
+let hoverMapPoint = null;
 
 function keyOf(x, y) {
   return `${x},${y}`;
@@ -513,7 +517,67 @@ function draw() {
   drawLayer(rect, getRemainingSupply(), "#6aa6ff", 1);
   drawLayer(rect, getConfirmedUsed(), "#ff6b6b", 1);
   drawManualLayer(rect, getManualUsed(), "#b779ff");
+  if (showIncendiary && hoverMapPoint) {
+    drawIncendiaryRange(rect, hoverMapPoint.x, hoverMapPoint.y);
+  }
   drawFrame(rect);
+}
+
+function drawIncendiaryRange(rect, x, y) {
+  const topLeft = mapToScreen(x - 4.5, y + 4.5, rect);
+  const bottomRight = mapToScreen(x + 4.5, y - 4.5, rect);
+  const left = Math.min(topLeft.x, bottomRight.x);
+  const top = Math.min(topLeft.y, bottomRight.y);
+  const width = Math.abs(bottomRight.x - topLeft.x);
+  const height = Math.abs(bottomRight.y - topLeft.y);
+  if (width < 1 || height < 1) return;
+
+  ctx.save();
+  ctx.fillStyle = "rgba(255, 107, 107, 0.12)";
+  ctx.strokeStyle = "rgba(255, 107, 107, 0.9)";
+  ctx.lineWidth = Math.max(1.5, Math.min(2.5, rect.width / view.size));
+  ctx.fillRect(left, top, width, height);
+  ctx.strokeRect(left, top, width, height);
+
+  ctx.beginPath();
+  ctx.rect(left, top, width, height);
+  ctx.clip();
+  ctx.strokeStyle = "rgba(255, 170, 170, 0.7)";
+  ctx.lineWidth = 1.5;
+  const spacing = Math.max(5, Math.min(12, width / 6));
+  for (let offset = -height; offset < width + height; offset += spacing) {
+    ctx.beginPath();
+    ctx.moveTo(left + offset, top + height);
+    ctx.lineTo(left + offset + height, top);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  if (view.size <= 180) {
+    const center = mapToScreen(x, y, rect);
+    ctx.save();
+    ctx.font = `700 12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const label = `${x},${y} · 9×9`;
+    const textWidth = ctx.measureText(label).width;
+    const padX = 6;
+    const padY = 4;
+    const boxW = textWidth + padX * 2;
+    const boxH = 12 + padY * 2;
+    const boxX = center.x - boxW / 2;
+    const boxY = center.y - boxH / 2;
+    ctx.fillStyle = "rgba(8, 13, 22, 0.85)";
+    roundRect(boxX, boxY, boxW, boxH, 4);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255, 107, 107, 0.9)";
+    ctx.lineWidth = 1;
+    roundRect(boxX, boxY, boxW, boxH, 4);
+    ctx.stroke();
+    ctx.fillStyle = "#ffd6d6";
+    ctx.fillText(label, center.x, center.y);
+    ctx.restore();
+  }
 }
 
 function mapToScreen(x, y, rect) {
@@ -866,6 +930,19 @@ buildingToggle.addEventListener("click", () => {
   draw();
   setMessage(showBuildings ? "건물 표시를 켰습니다." : "건물 표시를 껐습니다.");
 });
+incendiaryToggle.addEventListener("click", () => {
+  showIncendiary = !showIncendiary;
+  localStorage.setItem(INCENDIARY_TOGGLE_KEY, showIncendiary ? "1" : "0");
+  incendiaryToggle.setAttribute("aria-pressed", String(showIncendiary));
+  incendiaryToggle.classList.toggle("is-active", showIncendiary);
+  if (!showIncendiary) hoverMapPoint = null;
+  draw();
+  setMessage(
+    showIncendiary
+      ? "연소탄 미리보기 ON · 지도 위에 마우스를 올리거나(모바일에서는 손가락으로 터치/드래그) 9×9 범위를 확인하세요."
+      : "연소탄 미리보기를 껐습니다.",
+  );
+});
 document.getElementById("copyUsedButton").addEventListener("click", () => copyLayer("used"));
 adminLoginButton.addEventListener("click", loginAdmin);
 adminLogoutButton.addEventListener("click", () => logoutAdmin("보기 전용 모드"));
@@ -887,6 +964,13 @@ canvas.addEventListener("mousemove", (event) => {
   const manual = findNearestVisibleCoordinate(getManualUsed(), canvasPoint(event));
   const building = showBuildings ? findNearestBuilding(canvasPoint(event)) : null;
   canvas.title = manual ? `${manual}: ${MANUAL_USED_NOTE}` : building ? `${building.type}. ${building.name}` : "";
+  if (showIncendiary) {
+    const prev = hoverMapPoint;
+    hoverMapPoint = coord;
+    if (!isDragging && (!prev || prev.x !== coord.x || prev.y !== coord.y)) draw();
+  } else {
+    hoverMapPoint = coord;
+  }
   if (!isDragging) return;
   const point = canvasPoint(event);
   const moved = Math.hypot(point.x - dragStart.x, point.y - dragStart.y);
@@ -900,6 +984,12 @@ canvas.addEventListener("mousemove", (event) => {
 });
 canvas.addEventListener("mouseleave", () => {
   hoverCoord.textContent = "좌표: -";
+  if (showIncendiary && hoverMapPoint) {
+    hoverMapPoint = null;
+    draw();
+  } else {
+    hoverMapPoint = null;
+  }
 });
 canvas.addEventListener("mousedown", (event) => {
   if (Date.now() - lastTouchAt < 500) return;
@@ -910,7 +1000,7 @@ canvas.addEventListener("mousedown", (event) => {
 window.addEventListener("mouseup", (event) => {
   if (isDragging && dragStart && !dragStart.didDrag && event.target === canvas) {
     const point = canvasPoint(event);
-    applyMapClick(point);
+    if (!showIncendiary) applyMapClick(point);
   }
   isDragging = false;
 });
@@ -921,6 +1011,14 @@ canvas.addEventListener(
     lastTouchAt = Date.now();
     if (event.touches.length === 1) {
       const point = touchPoint(event.touches[0]);
+      if (showIncendiary) {
+        hoverMapPoint = screenToMap(point);
+        hoverCoord.textContent = `좌표: ${hoverMapPoint.x},${hoverMapPoint.y}`;
+        touchGesture = { type: "preview" };
+        draw();
+        event.preventDefault();
+        return;
+      }
       touchGesture = { type: "pan", ...point, viewX: view.x, viewY: view.y, didDrag: false };
     } else if (event.touches.length === 2) {
       const center = touchCenter(event.touches);
@@ -941,7 +1039,14 @@ canvas.addEventListener(
     lastTouchAt = Date.now();
     if (!touchGesture) return;
 
-    if (event.touches.length === 1 && touchGesture.type === "pan") {
+    if (event.touches.length === 1 && touchGesture.type === "preview") {
+      const point = touchPoint(event.touches[0]);
+      const coord = screenToMap(point);
+      hoverCoord.textContent = `좌표: ${coord.x},${coord.y}`;
+      const prev = hoverMapPoint;
+      hoverMapPoint = coord;
+      if (!prev || prev.x !== coord.x || prev.y !== coord.y) draw();
+    } else if (event.touches.length === 1 && touchGesture.type === "pan") {
       const point = touchPoint(event.touches[0]);
       const moved = Math.hypot(point.x - touchGesture.x, point.y - touchGesture.y);
       if (moved > 3) touchGesture.didDrag = true;
@@ -952,6 +1057,7 @@ canvas.addEventListener(
       clampView();
       const coord = screenToMap(point);
       hoverCoord.textContent = `좌표: ${coord.x},${coord.y}`;
+      hoverMapPoint = coord;
       draw();
     } else if (event.touches.length === 2) {
       if (touchGesture.type !== "pinch") {
@@ -983,14 +1089,23 @@ canvas.addEventListener(
   "touchend",
   (event) => {
     lastTouchAt = Date.now();
-    if (touchGesture?.type === "pan" && !touchGesture.didDrag && event.changedTouches.length === 1) {
+    if (
+      touchGesture?.type === "pan" &&
+      !touchGesture.didDrag &&
+      event.changedTouches.length === 1 &&
+      !showIncendiary
+    ) {
       applyMapClick(touchPoint(event.changedTouches[0]));
     }
     if (event.touches.length === 0) {
       touchGesture = null;
     } else if (event.touches.length === 1) {
       const point = touchPoint(event.touches[0]);
-      touchGesture = { type: "pan", ...point, viewX: view.x, viewY: view.y, didDrag: true };
+      if (showIncendiary) {
+        touchGesture = { type: "preview" };
+      } else {
+        touchGesture = { type: "pan", ...point, viewX: view.x, viewY: view.y, didDrag: true };
+      }
     }
     event.preventDefault();
   },
@@ -1001,4 +1116,6 @@ window.addEventListener("resize", draw);
 canvas.style.cursor = "grab";
 buildingToggle.setAttribute("aria-pressed", String(showBuildings));
 buildingToggle.classList.toggle("is-active", showBuildings);
+incendiaryToggle.setAttribute("aria-pressed", String(showIncendiary));
+incendiaryToggle.classList.toggle("is-active", showIncendiary);
 loadInitialData();
