@@ -394,7 +394,7 @@ function draw() {
   drawBoundaries(rect);
   drawLayer(rect, getRemainingSupply(), "#6aa6ff", 1);
   drawLayer(rect, getConfirmedUsed(), "#ff6b6b", 1);
-  drawLayer(rect, getManualUsed(), "#b779ff", 1, MANUAL_USED_NOTE);
+  drawManualLayer(rect, getManualUsed(), "#b779ff");
   drawFrame(rect);
 }
 
@@ -433,6 +433,50 @@ function drawLayer(rect, layer, color, alpha, note = "") {
     drawMarker(p.x, p.y, iconSize, color, alpha);
     if (showLabels) drawCoordinateLabel(p.x, p.y, iconSize, note ? `${coord} 수기` : coord, color);
   }
+}
+
+function drawManualLayer(rect, layer, color) {
+  const iconSize = markerSize(rect);
+  const showLabels = view.size <= 180;
+  for (const coord of layer) {
+    const [x, y] = coord.split(",").map(Number);
+    if (x + 4.5 < view.x || x - 4.5 > view.x + view.size || y + 4.5 < view.y || y - 4.5 > view.y + view.size) continue;
+    drawManualRange(rect, x, y, color);
+    const p = mapToScreen(x, y, rect);
+    drawMarker(p.x, p.y, iconSize, color, 1);
+    if (showLabels) drawCoordinateLabel(p.x, p.y, iconSize, `${coord} 수기`, color);
+  }
+}
+
+function drawManualRange(rect, x, y, color) {
+  const topLeft = mapToScreen(x - 4.5, y + 4.5, rect);
+  const bottomRight = mapToScreen(x + 4.5, y - 4.5, rect);
+  const left = Math.min(topLeft.x, bottomRight.x);
+  const top = Math.min(topLeft.y, bottomRight.y);
+  const width = Math.abs(bottomRight.x - topLeft.x);
+  const height = Math.abs(bottomRight.y - topLeft.y);
+  if (width < 1 || height < 1) return;
+
+  ctx.save();
+  ctx.fillStyle = "rgba(183, 121, 255, 0.10)";
+  ctx.strokeStyle = "rgba(183, 121, 255, 0.75)";
+  ctx.lineWidth = Math.max(1, Math.min(2, rect.width / view.size));
+  ctx.fillRect(left, top, width, height);
+  ctx.strokeRect(left, top, width, height);
+
+  ctx.beginPath();
+  ctx.rect(left, top, width, height);
+  ctx.clip();
+  ctx.strokeStyle = "rgba(230, 210, 255, 0.42)";
+  ctx.lineWidth = 1;
+  const spacing = Math.max(4, Math.min(10, width / 3));
+  for (let offset = -height; offset < width + height; offset += spacing) {
+    ctx.beginPath();
+    ctx.moveTo(left + offset, top + height);
+    ctx.lineTo(left + offset + height, top);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 function markerSize(rect) {
