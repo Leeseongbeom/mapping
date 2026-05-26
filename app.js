@@ -13,10 +13,6 @@ const INITIAL_USED = `
 608,203 422,223 431,777 435,780 420,180 833,601 155,292
 `;
 
-const MANUAL_USED_COORDINATES = `
-608,203 422,223 431,777 435,780 393,203 430,208 196,238
-190,394 586,199 218,423 761,163 249,849 250,844
-`;
 const MANUAL_USED_NOTE =
   "수기 입력 좌표입니다. 보급품 목록 중 가까운 좌표가 잘못 표기된 것으로 보고, 근처 보급품이 사용된 것으로 참고하세요.";
 
@@ -36,12 +32,12 @@ const usedList = document.getElementById("usedList");
 const supplyListCount = document.getElementById("supplyListCount");
 const usedListCount = document.getElementById("usedListCount");
 const searchInput = document.getElementById("searchInput");
+const toast = document.getElementById("toast");
 
 const layers = {
   supply: new Set(),
   used: new Set(),
 };
-const manualUsed = new Set();
 const STORAGE_KEY = "lastwar-coordinate-map-v2";
 const LEGACY_STORAGE_KEY = "lastwar-coordinate-map-v1";
 const API_BASE = location.protocol === "file:" ? "http://127.0.0.1:4174" : "";
@@ -52,6 +48,7 @@ let isDragging = false;
 let dragStart = null;
 let adminToken = sessionStorage.getItem(ADMIN_TOKEN_KEY) || "";
 let isAdmin = Boolean(adminToken);
+let toastTimer = null;
 
 function keyOf(x, y) {
   return `${x},${y}`;
@@ -81,7 +78,6 @@ function parseCoordinates(text) {
 
 async function loadInitialData() {
   for (const [x, y] of parseCoordinates(INITIAL_SUPPLY).parsed) layers.supply.add(keyOf(x, y));
-  for (const [x, y] of parseCoordinates(MANUAL_USED_COORDINATES).parsed) manualUsed.add(keyOf(x, y));
 
   setAdminMode(isAdmin, isAdmin ? "관리자 모드" : "보기 전용 모드");
 
@@ -144,17 +140,17 @@ async function pasteInto(textarea) {
 async function addCoordinates(text) {
   const { parsed, invalid } = parseCoordinates(text);
   const requested = parsed.map(([x, y]) => keyOf(x, y));
-  const add = requested.filter((coord) => layers.supply.has(coord) || manualUsed.has(coord));
-  const manualCount = add.filter((coord) => manualUsed.has(coord) && !layers.supply.has(coord)).length;
-  const notSupply = requested.length - add.length;
+  const add = requested;
+  const manualCount = add.filter((coord) => !layers.supply.has(coord)).length;
   const before = layers.used.size;
-  await mutateUsed(
+  const ok = await mutateUsed(
     { add },
-    `사용 위치 추가 요청 ${add.length}개${manualCount ? `, 수기 보정 ${manualCount}개` : ""}${notSupply ? `, 보급품 아님 ${notSupply}개` : ""}${invalid.length ? `, 오류 ${invalid.length}개` : ""}`,
+    `사용 위치 추가 요청 ${add.length}개${manualCount ? `, 수기 보정 ${manualCount}개` : ""}${invalid.length ? `, 오류 ${invalid.length}개` : ""}`,
   );
+  if (!ok) return;
   const added = layers.used.size - before;
   setMessage(
-    `사용 위치 추가 ${added}개, 중복 ${add.length - added}개${manualCount ? `, 수기 보정 ${manualCount}개` : ""}${notSupply ? `, 보급품 아님 ${notSupply}개` : ""}${invalid.length ? `, 오류 ${invalid.length}개` : ""}`,
+    `반영되었습니다. 추가 ${added}개, 중복 ${add.length - added}개${manualCount ? `, 수기 보정 ${manualCount}개` : ""}${invalid.length ? `, 오류 ${invalid.length}개` : ""}`,
   );
 }
 
@@ -202,7 +198,8 @@ async function mutateUsed(payload, pendingText) {
       body: JSON.stringify(payload),
     });
     layers.used = new Set(Array.isArray(data.used) ? data.used : []);
-    refresh("사용 목록이 저장되었습니다.");
+    refresh("반영되었습니다.");
+    showToast("반영되었습니다.");
     return true;
   } catch (error) {
     if (error.status === 401 || error.status === 403) {
@@ -216,6 +213,15 @@ async function mutateUsed(payload, pendingText) {
 
 function setMessage(text) {
   message.textContent = text;
+}
+
+function showToast(text) {
+  toast.textContent = text;
+  toast.classList.add("is-visible");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toast.classList.remove("is-visible");
+  }, 1800);
 }
 
 function renderList() {
@@ -626,6 +632,7 @@ async function loginAdmin() {
     adminCodeInput.value = "";
     setAdminMode(true, "관리자 모드");
     refresh("관리자 모드로 전환되었습니다.");
+    showToast("관리자 모드입니다.");
   } catch (error) {
     logoutAdmin("관리자 코드가 맞지 않습니다.");
   }

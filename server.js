@@ -16,12 +16,6 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const SUPABASE_TABLE = process.env.SUPABASE_TABLE || "used_coordinates";
 const USE_SUPABASE = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
 const SUPPLY_SET = new Set(parseCoordinates(INITIAL_SUPPLY).map(([x, y]) => `${x},${y}`));
-const MANUAL_USED_SET = new Set(
-  parseCoordinates(`
-608,203 422,223 431,777 435,780 393,203 430,208 196,238
-190,394 586,199 218,423 761,163 249,849 250,844
-`).map(([x, y]) => `${x},${y}`),
-);
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -75,7 +69,7 @@ function isSupplyCoordinate(value) {
 }
 
 function isUsedCoordinate(value) {
-  return isCoordinate(value) && (SUPPLY_SET.has(value) || MANUAL_USED_SET.has(value));
+  return isCoordinate(value);
 }
 
 async function loadUsed() {
