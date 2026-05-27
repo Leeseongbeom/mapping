@@ -63,6 +63,10 @@ const updatedAtLabel = document.getElementById("updatedAtLabel");
 const bulkAddSection = document.getElementById("bulkAddSection");
 const buildingToggle = document.getElementById("buildingToggle");
 const incendiaryToggle = document.getElementById("incendiaryToggle");
+const recommendationToggle = document.getElementById("recommendationToggle");
+const recommendationSection = document.getElementById("recommendationSection");
+const recommendationList = document.getElementById("recommendationList");
+const recommendationCount = document.getElementById("recommendationCount");
 const statsLabel = document.getElementById("statsLabel");
 const levelTabs = document.getElementById("levelTabs");
 
@@ -80,6 +84,7 @@ const API_BASE = location.protocol === "file:" ? "http://127.0.0.1:4174" : "";
 const ADMIN_TOKEN_KEY = "lastwar-admin-token";
 const BUILDING_TOGGLE_KEY = "lastwar-show-buildings";
 const INCENDIARY_TOGGLE_KEY = "lastwar-show-incendiary";
+const RECOMMENDATION_TOGGLE_KEY = "lastwar-show-incendiary-recommendations";
 const CLIENT_ID_KEY = "lastwar-client-id";
 const VISIT_RECORDED_KEY = "lastwar-visit-recorded-date";
 const HEARTBEAT_MS = 30 * 1000;
@@ -96,6 +101,7 @@ let toastTimer = null;
 let latestUpdatedAt = "";
 let showBuildings = localStorage.getItem(BUILDING_TOGGLE_KEY) === "1";
 let showIncendiary = localStorage.getItem(INCENDIARY_TOGGLE_KEY) === "1";
+let showRecommendations = localStorage.getItem(RECOMMENDATION_TOGGLE_KEY) === "1";
 let hoverMapPoint = null;
 let clientId = "";
 let heartbeatTimer = null;
@@ -103,6 +109,7 @@ let statsTimer = null;
 let activeLevel = normalizeLevel(localStorage.getItem(LEVEL_STORAGE_KEY) || DEFAULT_LEVEL);
 let pulses = [];
 let pulseFrame = null;
+let activeRecommendationId = "";
 
 function keyOf(x, y) {
   return `${x},${y}`;
@@ -234,6 +241,7 @@ function setAdminMode(nextIsAdmin, text) {
   isAdmin = nextIsAdmin;
   document.body.classList.toggle("is-admin", isAdmin);
   bulkAddSection.hidden = !isAdmin;
+  recommendationSection.hidden = !isAdmin || !showRecommendations;
   adminState.textContent = text || (isAdmin ? "관리자 모드" : "보기 전용 모드");
   if (isAdmin) startStatsPolling();
   else stopStatsPolling();
@@ -256,6 +264,7 @@ function setActiveLevel(level) {
     cancelAnimationFrame(pulseFrame);
     pulseFrame = null;
   }
+  activeRecommendationId = "";
   renderLevelTabs();
   refresh(`${activeLevel}단계 보급품을 표시합니다.`);
 }
@@ -387,6 +396,7 @@ function refresh(text) {
   saveLocalFallback();
   setMessage(text);
   renderList();
+  renderRecommendations();
   draw();
 }
 
@@ -505,6 +515,104 @@ function getManualUsed() {
     if (!layers.supply.has(coord)) used.add(coord);
   }
   return used;
+}
+
+function isInNineByNine(centerCoord, targetCoord) {
+  const [cx, cy] = centerCoord.split(",").map(Number);
+  const [x, y] = targetCoord.split(",").map(Number);
+  return Math.abs(cx - x) <= 4 && Math.abs(cy - y) <= 4;
+}
+
+function getManualRangeExcludedSupply() {
+  const excluded = new Set();
+  const manualUsed = getManualUsed();
+  for (const coord of layers.supply) {
+    if (layers.used.has(coord)) continue;
+    for (const manual of manualUsed) {
+      if (isInNineByNine(manual, coord)) {
+        excluded.add(coord);
+        break;
+      }
+    }
+  }
+  return excluded;
+}
+
+function getRecommendationSupply() {
+  const manualExcluded = getManualRangeExcludedSupply();
+  const remaining = [];
+  for (const coord of layers.supply) {
+    if (!layers.used.has(coord) && !manualExcluded.has(coord)) remaining.push(coord);
+  }
+  return remaining.sort(compareCoordinates);
+}
+
+function recommendationCenter(coordA, coordB) {
+  const [ax, ay] = coordA.split(",").map(Number);
+  const [bx, by] = coordB.split(",").map(Number);
+  return { x: (ax + bx) / 2, y: (ay + by) / 2 };
+}
+
+function recommendationId(coordA, coordB) {
+  return [coordA, coordB].sort(compareCoordinates).join("|");
+}
+
+function getIncendiaryRecommendations() {
+  const coords = getRecommendationSupply();
+  const results = [];
+  for (let i = 0; i < coords.length; i += 1) {
+    const [ax, ay] = coords[i].split(",").map(Number);
+    for (let j = i + 1; j < coords.length; j += 1) {
+      const [bx, by] = coords[j].split(",").map(Number);
+      const dx = Math.abs(ax - bx);
+      const dy = Math.abs(ay - by);
+      if (dy > 8 && by > ay) break;
+      if (dx <= 8 && dy <= 8 && !(dx <= 1 && dy <= 1)) {
+        const center = recommendationCenter(coords[i], coords[j]);
+        results.push({
+          id: recommendationId(coords[i], coords[j]),
+          coords: [coords[i], coords[j]],
+          center,
+          dx,
+          dy,
+          distance: Math.hypot(dx, dy),
+        });
+      }
+    }
+  }
+  return results.sort((a, b) => a.distance - b.distance || a.dy - b.dy || compareCoordinates(a.coords[0], b.coords[0]));
+}
+
+function renderRecommendations() {
+  const recommendations = getIncendiaryRecommendations();
+  recommendationCount.textContent = `${recommendations.length.toLocaleString("ko-KR")}개`;
+  recommendationSection.hidden = !isAdmin || !showRecommendations;
+
+  if (!isAdmin) {
+    recommendationList.innerHTML = "";
+    return;
+  }
+
+  if (recommendations.length === 0) {
+    recommendationList.innerHTML = `<div class="empty-list">추천 가능한 좌표쌍이 없습니다.</div>`;
+    return;
+  }
+
+  recommendationList.innerHTML = recommendations
+    .map((item, index) => {
+      const [a, b] = item.coords;
+      return `
+        <div class="recommendation-row${item.id === activeRecommendationId ? " is-selected" : ""}">
+          <button class="recommendation-jump" type="button" data-action="recommendation-jump" data-id="${item.id}">
+            <span class="recommendation-rank">${index + 1}</span>
+            <span class="recommendation-coords">${a} + ${b}</span>
+            <span class="recommendation-meta">x${item.dx} · y${item.dy}</span>
+          </button>
+          <button class="row-action admin-only" type="button" data-action="recommendation-use" data-id="${item.id}">둘 다 사용</button>
+        </div>
+      `;
+    })
+    .join("");
 }
 
 function renderLayerList(layer, target, countTarget, query) {
@@ -702,6 +810,48 @@ function animatePulses() {
   if (pulses.length) schedulePulseFrame();
 }
 
+function findRecommendation(id) {
+  return getIncendiaryRecommendations().find((item) => item.id === id) || null;
+}
+
+function focusRecommendation(item) {
+  view.size = Math.min(view.size, 90);
+  view.x = item.center.x - view.size / 2;
+  view.y = item.center.y - view.size / 2;
+  clampView();
+  activeRecommendationId = item.id;
+  for (const coord of item.coords) {
+    startCoordinatePulse(coord, "#facc15", false);
+  }
+  renderRecommendations();
+  draw();
+}
+
+async function handleRecommendationAction(event) {
+  const button = event.target.closest("button[data-action]");
+  if (!button) return;
+  const item = findRecommendation(button.dataset.id || "");
+  if (!item) {
+    renderRecommendations();
+    setMessage("추천 좌표가 최신 목록에 없습니다.");
+    return;
+  }
+
+  if (button.dataset.action === "recommendation-jump") {
+    focusRecommendation(item);
+    setMessage(`${item.coords.join(" + ")} 연소탄 추천 위치입니다.`);
+    return;
+  }
+
+  if (button.dataset.action === "recommendation-use") {
+    const ok = await mutateUsed({ add: item.coords });
+    if (ok) {
+      focusRecommendation(item);
+      setMessage(`${item.coords.join(" + ")} 두 좌표를 사용 처리했습니다.`);
+    }
+  }
+}
+
 async function handleListAction(event) {
   const button = event.target.closest("button[data-action]");
   if (!button) return;
@@ -746,6 +896,7 @@ function draw() {
   drawLayer(rect, getRemainingSupply(), "#6aa6ff", 1);
   drawLayer(rect, getConfirmedUsed(), "#ff6b6b", 1);
   drawManualLayer(rect, getManualUsed(), "#b779ff");
+  if (isAdmin && showRecommendations) drawRecommendationLayer(rect);
   drawPulses(rect);
   if (showIncendiary && hoverMapPoint) {
     drawIncendiaryRange(rect, hoverMapPoint.x, hoverMapPoint.y);
@@ -973,6 +1124,73 @@ function drawManualRange(rect, x, y, color) {
     ctx.beginPath();
     ctx.moveTo(left + offset, top + height);
     ctx.lineTo(left + offset + height, top);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawRecommendationLayer(rect) {
+  const recommendations = getIncendiaryRecommendations();
+  const visible = recommendations.slice(0, 80);
+  for (const item of visible) {
+    const active = item.id === activeRecommendationId;
+    drawRecommendationRange(rect, item, active);
+  }
+  for (const item of visible) {
+    drawRecommendationConnector(rect, item, item.id === activeRecommendationId);
+  }
+}
+
+function drawRecommendationRange(rect, item, active) {
+  const leftBottom = mapToScreen(item.center.x - 4.5, item.center.y - 4.5, rect);
+  const rightTop = mapToScreen(item.center.x + 4.5, item.center.y + 4.5, rect);
+  const left = Math.min(leftBottom.x, rightTop.x);
+  const top = Math.min(leftBottom.y, rightTop.y);
+  const width = Math.abs(rightTop.x - leftBottom.x);
+  const height = Math.abs(leftBottom.y - rightTop.y);
+  if (width < 1 || height < 1) return;
+
+  ctx.save();
+  ctx.fillStyle = active ? "rgba(250, 204, 21, 0.20)" : "rgba(250, 204, 21, 0.08)";
+  ctx.strokeStyle = active ? "rgba(250, 204, 21, 0.95)" : "rgba(250, 204, 21, 0.42)";
+  ctx.lineWidth = active ? 2.4 : 1.4;
+  ctx.fillRect(left, top, width, height);
+  ctx.strokeRect(left, top, width, height);
+  ctx.restore();
+}
+
+function drawRecommendationConnector(rect, item, active) {
+  const [coordA, coordB] = item.coords;
+  const [ax, ay] = coordA.split(",").map(Number);
+  const [bx, by] = coordB.split(",").map(Number);
+  if (
+    Math.max(ax, bx) < view.x ||
+    Math.min(ax, bx) > view.x + view.size ||
+    Math.max(ay, by) < view.y ||
+    Math.min(ay, by) > view.y + view.size
+  ) {
+    return;
+  }
+
+  const a = mapToScreen(ax, ay, rect);
+  const b = mapToScreen(bx, by, rect);
+  const size = markerSize(rect);
+  ctx.save();
+  ctx.strokeStyle = active ? "rgba(250, 204, 21, 0.95)" : "rgba(250, 204, 21, 0.58)";
+  ctx.lineWidth = active ? Math.max(2.4, size * 0.18) : Math.max(1.4, size * 0.11);
+  ctx.setLineDash(active ? [] : [5, 5]);
+  ctx.beginPath();
+  ctx.moveTo(a.x, a.y);
+  ctx.lineTo(b.x, b.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  for (const point of [a, b]) {
+    ctx.fillStyle = "rgba(250, 204, 21, 0.22)";
+    ctx.strokeStyle = "#facc15";
+    ctx.lineWidth = active ? 2.2 : 1.4;
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, Math.max(7, size * 0.65), 0, Math.PI * 2);
+    ctx.fill();
     ctx.stroke();
   }
   ctx.restore();
@@ -1207,6 +1425,17 @@ incendiaryToggle.addEventListener("click", () => {
       : "연소탄 미리보기를 껐습니다.",
   );
 });
+recommendationToggle.addEventListener("click", () => {
+  showRecommendations = !showRecommendations;
+  localStorage.setItem(RECOMMENDATION_TOGGLE_KEY, showRecommendations ? "1" : "0");
+  recommendationToggle.setAttribute("aria-pressed", String(showRecommendations));
+  recommendationToggle.classList.toggle("is-active", showRecommendations);
+  recommendationSection.hidden = !isAdmin || !showRecommendations;
+  if (!showRecommendations) activeRecommendationId = "";
+  renderRecommendations();
+  draw();
+  setMessage(showRecommendations ? "연소탄 추천을 표시합니다." : "연소탄 추천을 숨겼습니다.");
+});
 document.getElementById("copyUsedButton").addEventListener("click", () => copyLayer("used"));
 adminLoginButton.addEventListener("click", loginAdmin);
 adminLogoutButton.addEventListener("click", () => logoutAdmin("보기 전용 모드"));
@@ -1216,6 +1445,7 @@ adminCodeInput.addEventListener("keydown", (event) => {
 searchInput.addEventListener("input", renderList);
 supplyList.addEventListener("click", handleListAction);
 usedList.addEventListener("click", handleListAction);
+recommendationList.addEventListener("click", handleRecommendationAction);
 levelTabs.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-level]");
   if (!button) return;
@@ -1387,6 +1617,8 @@ buildingToggle.setAttribute("aria-pressed", String(showBuildings));
 buildingToggle.classList.toggle("is-active", showBuildings);
 incendiaryToggle.setAttribute("aria-pressed", String(showIncendiary));
 incendiaryToggle.classList.toggle("is-active", showIncendiary);
+recommendationToggle.setAttribute("aria-pressed", String(showRecommendations));
+recommendationToggle.classList.toggle("is-active", showRecommendations);
 
 clientId = getOrCreateClientId();
 recordVisitIfNeeded();

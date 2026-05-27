@@ -23,6 +23,7 @@
           <div class="toolbar-actions">
             <button id="buildingToggle" type="button" aria-pressed="false">건물 표시</button>
             <button id="incendiaryToggle" type="button" aria-pressed="false" title="9×9 연소탄 범위를 커서 위치에 미리 표시합니다.">연소탄</button>
+            <button id="recommendationToggle" class="admin-only" type="button" aria-pressed="false">추천</button>
             <button id="fitButton" type="button">전체 보기</button>
             <button id="clearButton" class="admin-only" type="button">현재 단계 사용 전체 취소</button>
           </div>
@@ -72,6 +73,14 @@
             <button id="pasteAddButton" type="button">붙여넣기</button>
             <button id="addButton" class="primary" type="button">사용 추가</button>
           </div>
+        </section>
+
+        <section id="recommendationSection" class="control-section recommendation-section admin-only" hidden>
+          <div class="section-header">
+            <h2>연소탄 추천</h2>
+            <span id="recommendationCount">0개</span>
+          </div>
+          <div id="recommendationList" class="recommendation-list" aria-live="polite"></div>
         </section>
 
         <section class="control-section compact">
