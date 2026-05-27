@@ -547,10 +547,21 @@ function getRecommendationSupply() {
   return remaining.sort(compareCoordinates);
 }
 
-function recommendationCenter(coordA, coordB) {
+function clampNumber(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function recommendationTarget(coordA, coordB) {
   const [ax, ay] = coordA.split(",").map(Number);
   const [bx, by] = coordB.split(",").map(Number);
-  return { x: (ax + bx) / 2, y: (ay + by) / 2 };
+  const minCenterX = Math.max(ax, bx) - 4;
+  const maxCenterX = Math.min(ax, bx) + 4;
+  const minCenterY = Math.max(ay, by) - 4;
+  const maxCenterY = Math.min(ay, by) + 4;
+  return {
+    x: clampNumber(Math.round((ax + bx) / 2), minCenterX, maxCenterX),
+    y: clampNumber(Math.round((ay + by) / 2), minCenterY, maxCenterY),
+  };
 }
 
 function recommendationId(coordA, coordB) {
@@ -568,11 +579,11 @@ function getIncendiaryRecommendations() {
       const dy = Math.abs(ay - by);
       if (dy > 8 && by > ay) break;
       if (dx <= 8 && dy <= 8 && !(dx <= 1 && dy <= 1)) {
-        const center = recommendationCenter(coords[i], coords[j]);
+        const target = recommendationTarget(coords[i], coords[j]);
         results.push({
           id: recommendationId(coords[i], coords[j]),
           coords: [coords[i], coords[j]],
-          center,
+          target,
           dx,
           dy,
           distance: Math.hypot(dx, dy),
@@ -606,7 +617,7 @@ function renderRecommendations() {
           <button class="recommendation-jump" type="button" data-action="recommendation-jump" data-id="${item.id}">
             <span class="recommendation-rank">${index + 1}</span>
             <span class="recommendation-coords">${a} + ${b}</span>
-            <span class="recommendation-meta">x${item.dx} · y${item.dy}</span>
+            <span class="recommendation-meta">중심 ${item.target.x},${item.target.y}</span>
           </button>
           <button class="row-action admin-only" type="button" data-action="recommendation-use" data-id="${item.id}">둘 다 사용</button>
         </div>
@@ -816,10 +827,11 @@ function findRecommendation(id) {
 
 function focusRecommendation(item) {
   view.size = Math.min(view.size, 90);
-  view.x = item.center.x - view.size / 2;
-  view.y = item.center.y - view.size / 2;
+  view.x = item.target.x - view.size / 2;
+  view.y = item.target.y - view.size / 2;
   clampView();
   activeRecommendationId = item.id;
+  startCoordinatePulse(`${item.target.x},${item.target.y}`, "#facc15", false);
   for (const coord of item.coords) {
     startCoordinatePulse(coord, "#facc15", false);
   }
@@ -839,7 +851,7 @@ async function handleRecommendationAction(event) {
 
   if (button.dataset.action === "recommendation-jump") {
     focusRecommendation(item);
-    setMessage(`${item.coords.join(" + ")} 연소탄 추천 위치입니다.`);
+    setMessage(`${item.coords.join(" + ")} 추천 중심은 ${item.target.x},${item.target.y} 입니다.`);
     return;
   }
 
@@ -1142,8 +1154,8 @@ function drawRecommendationLayer(rect) {
 }
 
 function drawRecommendationRange(rect, item, active) {
-  const leftBottom = mapToScreen(item.center.x - 4.5, item.center.y - 4.5, rect);
-  const rightTop = mapToScreen(item.center.x + 4.5, item.center.y + 4.5, rect);
+  const leftBottom = mapToScreen(item.target.x - 4.5, item.target.y - 4.5, rect);
+  const rightTop = mapToScreen(item.target.x + 4.5, item.target.y + 4.5, rect);
   const left = Math.min(leftBottom.x, rightTop.x);
   const top = Math.min(leftBottom.y, rightTop.y);
   const width = Math.abs(rightTop.x - leftBottom.x);
@@ -1156,6 +1168,28 @@ function drawRecommendationRange(rect, item, active) {
   ctx.lineWidth = active ? 2.4 : 1.4;
   ctx.fillRect(left, top, width, height);
   ctx.strokeRect(left, top, width, height);
+
+  if (active && view.size <= 180) {
+    const center = mapToScreen(item.target.x, item.target.y, rect);
+    const label = `중심 ${item.target.x},${item.target.y}`;
+    ctx.font = "700 12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const textWidth = ctx.measureText(label).width;
+    const boxWidth = textWidth + 12;
+    const boxHeight = 22;
+    const boxX = center.x - boxWidth / 2;
+    const boxY = center.y - boxHeight / 2;
+    ctx.fillStyle = "rgba(8, 13, 22, 0.88)";
+    roundRect(boxX, boxY, boxWidth, boxHeight, 4);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(250, 204, 21, 0.95)";
+    ctx.lineWidth = 1;
+    roundRect(boxX, boxY, boxWidth, boxHeight, 4);
+    ctx.stroke();
+    ctx.fillStyle = "#fef3c7";
+    ctx.fillText(label, center.x, center.y);
+  }
   ctx.restore();
 }
 
