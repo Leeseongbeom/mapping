@@ -105,7 +105,10 @@
             <div class="list-panel">
               <div class="list-header">
                 <span><b class="dot supply-dot"></b>남은 보급품 목록</span>
-                <span id="supplyListCount">0개</span>
+                <span class="header-actions">
+                  <span id="supplyListCount">0개</span>
+                  <button id="copySupplyButton" class="row-action copy-list-button admin-only" type="button">복사</button>
+                </span>
               </div>
               <div id="supplyList" class="coord-list" data-layer="supply" aria-live="polite"></div>
             </div>
@@ -114,7 +117,7 @@
                 <span><b class="dot used-dot"></b>사용한 보급품 목록</span>
                 <span class="header-actions">
                   <span id="usedListCount">0개</span>
-                  <button id="copyUsedButton" class="row-action admin-only" type="button">복사</button>
+                  <button id="copyUsedButton" class="row-action copy-list-button admin-only" type="button">복사</button>
                 </span>
               </div>
               <div id="usedList" class="coord-list" data-layer="used" aria-live="polite"></div>

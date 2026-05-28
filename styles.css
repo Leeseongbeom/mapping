@@ -752,7 +752,7 @@ select {
   justify-content: flex-end;
 }
 
-#copyUsedButton {
+.copy-list-button {
   min-height: 22px;
   height: 22px;
   padding: 0 8px;
@@ -765,7 +765,7 @@ select {
   color: var(--ink-soft);
 }
 
-#copyUsedButton:hover {
+.copy-list-button:hover {
   background: rgba(255, 255, 255, 0.08);
   color: var(--ink);
 }

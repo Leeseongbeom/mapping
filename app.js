@@ -1468,6 +1468,7 @@ recommendationToggle.addEventListener("click", () => {
   draw();
   setMessage(showRecommendations ? "연소탄 추천을 표시합니다." : "연소탄 추천을 숨겼습니다.");
 });
+document.getElementById("copySupplyButton").addEventListener("click", () => copyLayer("supply"));
 document.getElementById("copyUsedButton").addEventListener("click", () => copyLayer("used"));
 adminLoginButton.addEventListener("click", loginAdmin);
 adminLogoutButton.addEventListener("click", () => logoutAdmin("보기 전용 모드"));
