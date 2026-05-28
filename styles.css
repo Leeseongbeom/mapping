@@ -171,6 +171,26 @@ h1 {
   color: var(--accent);
 }
 
+.source-label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border: 1px solid rgba(250, 204, 21, 0.36);
+  border-radius: var(--radius-xs);
+  background: rgba(250, 204, 21, 0.10);
+  color: #fde68a;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.source-label:hover {
+  border-color: rgba(250, 204, 21, 0.62);
+  color: #fff7cc;
+}
+
 h2 {
   font-size: 13px;
   font-weight: 600;
@@ -258,6 +278,39 @@ button.primary {
 button.primary:hover {
   background: linear-gradient(180deg, #7eb1ff 0%, #5b96ff 100%);
   color: #0a0f1c;
+}
+
+.notice-box {
+  display: flex;
+  align-items: center;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(250, 204, 21, 0.22);
+  border-radius: var(--radius-sm);
+  background: rgba(250, 204, 21, 0.08);
+  color: #f3d58b;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.notice-box strong {
+  color: #fde68a;
+}
+
+.notice-box span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.notice-box span::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #facc15;
 }
 
 .level-tabs {

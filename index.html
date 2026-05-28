@@ -14,6 +14,14 @@
             <div class="title-row">
               <h1>라스트워 좌표 맵</h1>
               <span id="updatedAtLabel" class="updated-at">최신화 -</span>
+              <a
+                id="sourceLabel"
+                class="source-label"
+                href="https://cpt-hedge.com/maps/season-2/supplies"
+                target="_blank"
+                rel="noopener noreferrer"
+                hidden
+              >출처 CptHedgehog</a>
               <span id="statsLabel" class="updated-at stats-label admin-only" title="동시 접속자 / 오늘 방문수 / 누적 방문수">접속 -</span>
             </div>
             <p>
@@ -23,10 +31,15 @@
           <div class="toolbar-actions">
             <button id="buildingToggle" type="button" aria-pressed="false">건물 표시</button>
             <button id="incendiaryToggle" type="button" aria-pressed="false" title="9×9 연소탄 범위를 커서 위치에 미리 표시합니다.">연소탄</button>
-            <button id="recommendationToggle" class="admin-only" type="button" aria-pressed="false">추천</button>
+            <button id="recommendationToggle" type="button" aria-pressed="false">추천</button>
             <button id="fitButton" type="button">전체 보기</button>
             <button id="clearButton" class="admin-only" type="button">현재 단계 사용 전체 취소</button>
           </div>
+        </div>
+        <div class="notice-box" role="note" aria-label="연소탄 주의사항">
+          <strong>연소탄 주의</strong>
+          <span>한파때 연소탄 사용 x</span>
+          <span>기지나 채집지 연소탄 범위에 넣지 말기</span>
         </div>
         <div id="levelTabs" class="level-tabs" role="tablist" aria-label="보급품 단계">
           <button type="button" data-level="3" role="tab" aria-selected="true">3단계</button>
@@ -75,7 +88,7 @@
           </div>
         </section>
 
-        <section id="recommendationSection" class="control-section recommendation-section admin-only" hidden>
+        <section id="recommendationSection" class="control-section recommendation-section" hidden>
           <div class="section-header">
             <h2>연소탄 추천</h2>
             <span id="recommendationCount">0개</span>

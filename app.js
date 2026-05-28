@@ -60,6 +60,7 @@ const usedListCount = document.getElementById("usedListCount");
 const searchInput = document.getElementById("searchInput");
 const toast = document.getElementById("toast");
 const updatedAtLabel = document.getElementById("updatedAtLabel");
+const sourceLabel = document.getElementById("sourceLabel");
 const bulkAddSection = document.getElementById("bulkAddSection");
 const buildingToggle = document.getElementById("buildingToggle");
 const incendiaryToggle = document.getElementById("incendiaryToggle");
@@ -241,7 +242,7 @@ function setAdminMode(nextIsAdmin, text) {
   isAdmin = nextIsAdmin;
   document.body.classList.toggle("is-admin", isAdmin);
   bulkAddSection.hidden = !isAdmin;
-  recommendationSection.hidden = !isAdmin || !showRecommendations;
+  recommendationSection.hidden = !showRecommendations;
   adminState.textContent = text || (isAdmin ? "관리자 모드" : "보기 전용 모드");
   if (isAdmin) startStatsPolling();
   else stopStatsPolling();
@@ -253,6 +254,7 @@ function renderLevelTabs() {
     button.classList.toggle("is-active", selected);
     button.setAttribute("aria-selected", String(selected));
   }
+  sourceLabel.hidden = activeLevel === DEFAULT_LEVEL;
 }
 
 function setActiveLevel(level) {
@@ -393,6 +395,7 @@ function refresh(text) {
   supplyCount.textContent = getRemainingSupply().size.toLocaleString("ko-KR");
   usedCount.textContent = layers.used.size.toLocaleString("ko-KR");
   updatedAtLabel.textContent = formatUpdatedAt(latestUpdatedAt);
+  sourceLabel.hidden = activeLevel === DEFAULT_LEVEL;
   saveLocalFallback();
   setMessage(text);
   renderList();
@@ -597,12 +600,7 @@ function getIncendiaryRecommendations() {
 function renderRecommendations() {
   const recommendations = getIncendiaryRecommendations();
   recommendationCount.textContent = `${recommendations.length.toLocaleString("ko-KR")}개`;
-  recommendationSection.hidden = !isAdmin || !showRecommendations;
-
-  if (!isAdmin) {
-    recommendationList.innerHTML = "";
-    return;
-  }
+  recommendationSection.hidden = !showRecommendations;
 
   if (recommendations.length === 0) {
     recommendationList.innerHTML = `<div class="empty-list">추천 가능한 좌표쌍이 없습니다.</div>`;
@@ -908,7 +906,7 @@ function draw() {
   drawLayer(rect, getRemainingSupply(), "#6aa6ff", 1);
   drawLayer(rect, getConfirmedUsed(), "#ff6b6b", 1);
   drawManualLayer(rect, getManualUsed(), "#b779ff");
-  if (isAdmin && showRecommendations) drawRecommendationLayer(rect);
+  if (showRecommendations) drawRecommendationLayer(rect);
   drawPulses(rect);
   if (showIncendiary && hoverMapPoint) {
     drawIncendiaryRange(rect, hoverMapPoint.x, hoverMapPoint.y);
@@ -1464,7 +1462,7 @@ recommendationToggle.addEventListener("click", () => {
   localStorage.setItem(RECOMMENDATION_TOGGLE_KEY, showRecommendations ? "1" : "0");
   recommendationToggle.setAttribute("aria-pressed", String(showRecommendations));
   recommendationToggle.classList.toggle("is-active", showRecommendations);
-  recommendationSection.hidden = !isAdmin || !showRecommendations;
+  recommendationSection.hidden = !showRecommendations;
   if (!showRecommendations) activeRecommendationId = "";
   renderRecommendations();
   draw();
