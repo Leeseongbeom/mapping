@@ -91,7 +91,7 @@ function emptyUsedByLevel() {
 
 function decodeUsedEntry(value) {
   if (typeof value !== "string") return null;
-  const match = value.match(/^L([3-7]):(.+)$/);
+  const match = value.match(/^L([2-7]):(.+)$/);
   const level = match ? normalizeLevel(match[1]) : DEFAULT_LEVEL;
   const coord = match ? match[2] : value;
   if (!isCoordinate(coord)) return null;
