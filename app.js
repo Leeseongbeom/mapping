@@ -1378,7 +1378,8 @@ function zoomAt(event) {
 }
 
 function copyLayer(layerName) {
-  const coordinates = Array.from(layers[layerName]);
+  const source = layerName === "supply" ? getRemainingSupply() : layers[layerName];
+  const coordinates = Array.from(source);
   if (layerName === "used") {
     coordinates.reverse();
   } else {
