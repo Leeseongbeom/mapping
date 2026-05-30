@@ -64,6 +64,7 @@ const sourceLabel = document.getElementById("sourceLabel");
 const bulkAddSection = document.getElementById("bulkAddSection");
 const buildingToggle = document.getElementById("buildingToggle");
 const incendiaryToggle = document.getElementById("incendiaryToggle");
+const furnaceToggle = document.getElementById("furnaceToggle");
 const recommendationToggle = document.getElementById("recommendationToggle");
 const recommendationSection = document.getElementById("recommendationSection");
 const recommendationList = document.getElementById("recommendationList");
@@ -85,6 +86,7 @@ const API_BASE = location.protocol === "file:" ? "http://127.0.0.1:4174" : "";
 const ADMIN_TOKEN_KEY = "lastwar-admin-token";
 const BUILDING_TOGGLE_KEY = "lastwar-show-buildings";
 const INCENDIARY_TOGGLE_KEY = "lastwar-show-incendiary";
+const FURNACE_TOGGLE_KEY = "lastwar-show-furnace";
 const RECOMMENDATION_TOGGLE_KEY = "lastwar-show-incendiary-recommendations";
 const CLIENT_ID_KEY = "lastwar-client-id";
 const VISIT_RECORDED_KEY = "lastwar-visit-recorded-date";
@@ -102,6 +104,7 @@ let toastTimer = null;
 let latestUpdatedAt = "";
 let showBuildings = localStorage.getItem(BUILDING_TOGGLE_KEY) === "1";
 let showIncendiary = localStorage.getItem(INCENDIARY_TOGGLE_KEY) === "1";
+let showFurnace = localStorage.getItem(FURNACE_TOGGLE_KEY) === "1";
 let showRecommendations = localStorage.getItem(RECOMMENDATION_TOGGLE_KEY) === "1";
 let hoverMapPoint = null;
 let clientId = "";
@@ -911,7 +914,27 @@ function draw() {
   if (showIncendiary && hoverMapPoint) {
     drawIncendiaryRange(rect, hoverMapPoint.x, hoverMapPoint.y);
   }
+  if (showFurnace && hoverMapPoint) {
+    drawFurnaceRange(rect, hoverMapPoint.x, hoverMapPoint.y);
+  }
   drawFrame(rect);
+}
+
+function drawMapRect(rect, minX, minY, maxX, maxY, fillStyle, strokeStyle, lineWidth) {
+  const leftBottom = mapToScreen(minX - 0.5, minY - 0.5, rect);
+  const rightTop = mapToScreen(maxX + 0.5, maxY + 0.5, rect);
+  const left = Math.min(leftBottom.x, rightTop.x);
+  const top = Math.min(leftBottom.y, rightTop.y);
+  const width = Math.abs(rightTop.x - leftBottom.x);
+  const height = Math.abs(leftBottom.y - rightTop.y);
+  if (width < 1 || height < 1) return null;
+
+  ctx.fillStyle = fillStyle;
+  ctx.strokeStyle = strokeStyle;
+  ctx.lineWidth = lineWidth;
+  ctx.fillRect(left, top, width, height);
+  ctx.strokeRect(left, top, width, height);
+  return { left, top, width, height };
 }
 
 function drawIncendiaryRange(rect, x, y) {
@@ -966,6 +989,73 @@ function drawIncendiaryRange(rect, x, y) {
     roundRect(boxX, boxY, boxW, boxH, 4);
     ctx.stroke();
     ctx.fillStyle = "#ffd6d6";
+    ctx.fillText(label, center.x, center.y);
+    ctx.restore();
+  }
+}
+
+function drawFurnaceRange(rect, x, y) {
+  ctx.save();
+  const effect = drawMapRect(
+    rect,
+    Math.max(0, x - 18),
+    Math.max(0, y - 18),
+    Math.min(999, x + 19),
+    Math.min(999, y + 19),
+    "rgba(56, 189, 248, 0.11)",
+    "rgba(56, 189, 248, 0.85)",
+    Math.max(1.3, Math.min(2.4, rect.width / view.size)),
+  );
+
+  if (effect) {
+    ctx.beginPath();
+    ctx.rect(effect.left, effect.top, effect.width, effect.height);
+    ctx.clip();
+    ctx.strokeStyle = "rgba(125, 211, 252, 0.32)";
+    ctx.lineWidth = 1;
+    const spacing = Math.max(8, Math.min(18, effect.width / 12));
+    for (let offset = -effect.height; offset < effect.width + effect.height; offset += spacing) {
+      ctx.beginPath();
+      ctx.moveTo(effect.left + offset, effect.top + effect.height);
+      ctx.lineTo(effect.left + offset + effect.height, effect.top);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+
+  ctx.save();
+  drawMapRect(
+    rect,
+    Math.max(0, x - 2),
+    Math.max(0, y - 2),
+    Math.min(999, x + 2),
+    Math.min(999, y + 2),
+    "rgba(14, 165, 233, 0.34)",
+    "rgba(224, 242, 254, 0.95)",
+    Math.max(1.8, Math.min(3, rect.width / view.size)),
+  );
+  ctx.restore();
+
+  if (view.size <= 260) {
+    const center = mapToScreen(x, y, rect);
+    ctx.save();
+    ctx.font = "700 12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const label = `${x},${y} · 용광로 38×38`;
+    const textWidth = ctx.measureText(label).width;
+    const boxW = textWidth + 12;
+    const boxH = 22;
+    const boxX = center.x - boxW / 2;
+    const boxY = center.y - boxH / 2;
+    ctx.fillStyle = "rgba(8, 13, 22, 0.88)";
+    roundRect(boxX, boxY, boxW, boxH, 4);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(56, 189, 248, 0.9)";
+    ctx.lineWidth = 1;
+    roundRect(boxX, boxY, boxW, boxH, 4);
+    ctx.stroke();
+    ctx.fillStyle = "#e0f2fe";
     ctx.fillText(label, center.x, center.y);
     ctx.restore();
   }
@@ -1450,12 +1540,25 @@ incendiaryToggle.addEventListener("click", () => {
   localStorage.setItem(INCENDIARY_TOGGLE_KEY, showIncendiary ? "1" : "0");
   incendiaryToggle.setAttribute("aria-pressed", String(showIncendiary));
   incendiaryToggle.classList.toggle("is-active", showIncendiary);
-  if (!showIncendiary) hoverMapPoint = null;
+  if (!showIncendiary && !showFurnace) hoverMapPoint = null;
   draw();
   setMessage(
     showIncendiary
       ? "연소탄 미리보기 ON · 지도 위에 마우스를 올리거나(모바일에서는 손가락으로 터치/드래그) 9×9 범위를 확인하세요."
       : "연소탄 미리보기를 껐습니다.",
+  );
+});
+furnaceToggle.addEventListener("click", () => {
+  showFurnace = !showFurnace;
+  localStorage.setItem(FURNACE_TOGGLE_KEY, showFurnace ? "1" : "0");
+  furnaceToggle.setAttribute("aria-pressed", String(showFurnace));
+  furnaceToggle.classList.toggle("is-active", showFurnace);
+  if (!showFurnace && !showIncendiary) hoverMapPoint = null;
+  draw();
+  setMessage(
+    showFurnace
+      ? "용광로 미리보기 ON · 중심 기준 5×5 본체와 38×38 온도 범위를 확인하세요."
+      : "용광로 미리보기를 껐습니다.",
   );
 });
 recommendationToggle.addEventListener("click", () => {
@@ -1497,7 +1600,7 @@ canvas.addEventListener("mousemove", (event) => {
   const manual = findNearestVisibleCoordinate(getManualUsed(), canvasPoint(event));
   const building = showBuildings ? findNearestBuilding(canvasPoint(event)) : null;
   canvas.title = manual ? `${manual}: ${MANUAL_USED_NOTE}` : building ? `${building.type}. ${building.name}` : "";
-  if (showIncendiary) {
+  if (showIncendiary || showFurnace) {
     const prev = hoverMapPoint;
     hoverMapPoint = coord;
     if (!isDragging && (!prev || prev.x !== coord.x || prev.y !== coord.y)) draw();
@@ -1517,7 +1620,7 @@ canvas.addEventListener("mousemove", (event) => {
 });
 canvas.addEventListener("mouseleave", () => {
   hoverCoord.textContent = "좌표: -";
-  if (showIncendiary && hoverMapPoint) {
+  if ((showIncendiary || showFurnace) && hoverMapPoint) {
     hoverMapPoint = null;
     draw();
   } else {
@@ -1533,7 +1636,7 @@ canvas.addEventListener("mousedown", (event) => {
 window.addEventListener("mouseup", (event) => {
   if (isDragging && dragStart && !dragStart.didDrag && event.target === canvas) {
     const point = canvasPoint(event);
-    if (!showIncendiary) applyMapClick(point);
+    if (!showIncendiary && !showFurnace) applyMapClick(point);
   }
   isDragging = false;
 });
@@ -1544,7 +1647,7 @@ canvas.addEventListener(
     lastTouchAt = Date.now();
     if (event.touches.length === 1) {
       const point = touchPoint(event.touches[0]);
-      if (showIncendiary) {
+      if (showIncendiary || showFurnace) {
         hoverMapPoint = screenToMap(point);
         hoverCoord.textContent = `좌표: ${hoverMapPoint.x},${hoverMapPoint.y}`;
         touchGesture = { type: "preview" };
@@ -1626,7 +1729,7 @@ canvas.addEventListener(
       touchGesture?.type === "pan" &&
       !touchGesture.didDrag &&
       event.changedTouches.length === 1 &&
-      !showIncendiary
+      !showIncendiary && !showFurnace
     ) {
       applyMapClick(touchPoint(event.changedTouches[0]));
     }
@@ -1634,7 +1737,7 @@ canvas.addEventListener(
       touchGesture = null;
     } else if (event.touches.length === 1) {
       const point = touchPoint(event.touches[0]);
-      if (showIncendiary) {
+      if (showIncendiary || showFurnace) {
         touchGesture = { type: "preview" };
       } else {
         touchGesture = { type: "pan", ...point, viewX: view.x, viewY: view.y, didDrag: true };
@@ -1651,6 +1754,8 @@ buildingToggle.setAttribute("aria-pressed", String(showBuildings));
 buildingToggle.classList.toggle("is-active", showBuildings);
 incendiaryToggle.setAttribute("aria-pressed", String(showIncendiary));
 incendiaryToggle.classList.toggle("is-active", showIncendiary);
+furnaceToggle.setAttribute("aria-pressed", String(showFurnace));
+furnaceToggle.classList.toggle("is-active", showFurnace);
 recommendationToggle.setAttribute("aria-pressed", String(showRecommendations));
 recommendationToggle.classList.toggle("is-active", showRecommendations);
 
