@@ -28,14 +28,55 @@
               남은 보급품 <span id="supplyCount">0</span>개 · 사용 <span id="usedCount">0</span>개
             </p>
           </div>
-          <div class="toolbar-actions">
-            <button id="buildingToggle" type="button" aria-pressed="false">건물 표시</button>
-            <button id="incendiaryToggle" type="button" aria-pressed="false" title="9×9 연소탄 범위를 커서 위치에 미리 표시합니다.">연소탄</button>
-            <button id="furnaceToggle" type="button" aria-pressed="false" title="5×5 본체와 38×38 연맹 용광로 온도 범위를 중심 기준으로 표시합니다.">용광로</button>
-            <button id="recommendationToggle" type="button" aria-pressed="false">추천</button>
-            <button id="clearTempButton" type="button">임시 초기화</button>
-            <button id="fitButton" type="button">전체 보기</button>
-            <button id="clearButton" class="admin-only" type="button">현재 단계 사용 전체 취소</button>
+          <div class="toolbar-actions" aria-label="지도 도구">
+            <div class="tool-group">
+              <span class="tool-group-title">지도 보기</span>
+              <div class="tool-buttons">
+                <span class="tool-control">
+                  <button id="buildingToggle" type="button" aria-pressed="false">건물 보기</button>
+                  <small>마을·도시·공장 같은 건물 위치를 지도에 겹쳐 봅니다.</small>
+                </span>
+                <span class="tool-control">
+                  <button id="fitButton" type="button">전체 보기</button>
+                  <small>지도를 0,0부터 999,999까지 한 번에 맞춥니다.</small>
+                </span>
+              </div>
+            </div>
+            <div class="tool-group">
+              <span class="tool-group-title">범위 찍기</span>
+              <div class="tool-buttons">
+                <span class="tool-control">
+                  <button id="incendiaryToggle" type="button" aria-pressed="false" title="9×9 연소탄 범위를 커서 위치에 미리 표시합니다.">연소탄 찍기</button>
+                  <small>켜고 지도 클릭 시 9×9 연소탄 범위를 임시 표시합니다.</small>
+                </span>
+                <span class="tool-control">
+                  <button id="furnaceToggle" type="button" aria-pressed="false" title="5×5 본체와 38×38 연맹 용광로 온도 범위를 중심 기준으로 표시합니다.">용광로 찍기</button>
+                  <small>켜고 지도 클릭 시 5×5 본체와 38×38 효과 범위를 임시 표시합니다.</small>
+                </span>
+                <span class="tool-control">
+                  <button id="clearTempButton" type="button">임시 표시 지우기</button>
+                  <small>지도에 찍어둔 연소탄·용광로 임시 범위를 모두 지웁니다.</small>
+                </span>
+              </div>
+            </div>
+            <div class="tool-group">
+              <span class="tool-group-title">분석</span>
+              <div class="tool-buttons">
+                <span class="tool-control">
+                  <button id="recommendationToggle" type="button" aria-pressed="false">연소탄 추천</button>
+                  <small>남은 보급품 중 2개 이상 같이 먹기 좋은 위치를 보여줍니다.</small>
+                </span>
+              </div>
+            </div>
+            <div class="tool-group admin-only">
+              <span class="tool-group-title">관리</span>
+              <div class="tool-buttons">
+                <span class="tool-control danger-control">
+                  <button id="clearButton" class="danger" type="button">현재 단계 사용 전체 취소</button>
+                  <small>현재 출처·단계의 사용 표시를 모두 미사용으로 되돌립니다.</small>
+                </span>
+              </div>
+            </div>
           </div>
         </div>
         <div class="notice-box" role="note" aria-label="연소탄 주의사항">

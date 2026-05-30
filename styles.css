@@ -222,11 +222,64 @@ select {
   color: var(--ink-soft);
 }
 
-.toolbar-actions,
 .button-row,
 .list-actions {
   display: flex;
   gap: 8px;
+}
+
+.toolbar-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 10px;
+  align-items: stretch;
+  max-width: 720px;
+}
+
+.tool-group {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.tool-group-title {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.tool-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.tool-control {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  flex: 1 1 104px;
+  min-width: 104px;
+}
+
+.tool-control button {
+  width: 100%;
+}
+
+.tool-control small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.danger-control small {
+  color: rgba(255, 133, 133, 0.84);
 }
 
 button {
@@ -897,6 +950,15 @@ select {
     grid-template-columns: 1fr;
   }
 
+  .map-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .toolbar-actions {
+    max-width: none;
+  }
+
   .side-panel {
     grid-template-rows: auto auto auto minmax(0, auto);
     max-height: none;
@@ -925,11 +987,18 @@ select {
     text-align: left;
   }
 
-  .toolbar-actions,
   .button-row,
   .list-actions,
   .admin-login-row {
     flex-wrap: wrap;
+  }
+
+  .toolbar-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .tool-control {
+    flex-basis: 100%;
   }
 
   .admin-login-row {
