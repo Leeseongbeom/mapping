@@ -1,6 +1,6 @@
 // Generated from the Geumgo Season 2 supply coordinate workbook/PDF on 2026-05-31.
 // Level columns are parsed as four fixed area columns per level; duplicate cells are removed.
-// Cells with a solid fill color are treated as used coordinates.
+// Only magenta-filled cells are treated as used coordinates; gray guide cells remain unused.
 
 export const GEUMGO_SUPPLY_BY_LEVEL = {
   1: `
@@ -140,7 +140,7 @@ export const GEUMGO_INITIAL_USED_BY_LEVEL = {
 298,72 299,67 417,976 431,978 564,973 597,932 601,932 857,936
 `,
   2: `
-450,875 664,879 666,882
+450,875
 `,
   3: `
 150,431 150,588 153,393 155,292 157,739 159,730 160,597 169,231 169,273 169,414
@@ -165,11 +165,7 @@ export const GEUMGO_INITIAL_USED_BY_LEVEL = {
 
 `,
   5: `
-302,401 304,394 305,608 308,585 324,390 324,599 325,426 329,592 338,555 338,566
-339,419 339,435 340,382 346,593 350,609 359,388 360,385 363,576 366,433 367,431
-370,442 371,444 372,568 551,632 554,319 566,307 567,625 570,633 572,693 575,698
-577,313 578,340 578,370 579,311 579,320 580,368 581,368 588,303 599,334 603,659
-619,677 621,347 621,361 622,680 624,697
+
 `,
   6: `
 

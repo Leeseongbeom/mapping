@@ -115,6 +115,10 @@ function emptyUsedBySource() {
   return Object.fromEntries(SOURCE_KEYS.map((source) => [source, emptyUsedByLevel()]));
 }
 
+function emptyHiddenInitialBySource() {
+  return emptyUsedBySource();
+}
+
 function decodeUsedEntry(value) {
   if (typeof value !== "string") return null;
   const geumgoMatch = value.match(/^G([1-7]):(.+)$/);
@@ -126,11 +130,27 @@ function decodeUsedEntry(value) {
   return { source, level, coord };
 }
 
+function decodeHiddenInitialEntry(value) {
+  if (typeof value !== "string") return null;
+  const match = value.match(/^H:([CG])([1-7]):(.+)$/);
+  if (!match) return null;
+  const source = match[1] === "G" ? "geumgo" : DEFAULT_SOURCE;
+  const level = normalizeLevel(match[2]);
+  const coord = match[3];
+  if (!isCoordinate(coord)) return null;
+  return { source, level, coord };
+}
+
 function encodeUsedEntry(source, level, coord) {
   const normalizedSource = normalizeSource(source);
   const normalizedLevel = normalizeLevel(level);
   if (normalizedSource === "geumgo") return `G${normalizedLevel}:${coord}`;
   return normalizedLevel === DEFAULT_LEVEL ? coord : `L${normalizedLevel}:${coord}`;
+}
+
+function encodeHiddenInitialEntry(source, level, coord) {
+  const sourceCode = normalizeSource(source) === "geumgo" ? "G" : "C";
+  return `H:${sourceCode}${normalizeLevel(level)}:${coord}`;
 }
 
 function normalizeUsedByLevel(input) {
@@ -166,23 +186,39 @@ function usedBySourceFromEntries(entries) {
   return next;
 }
 
-function entriesFromUsedBySource(usedBySource) {
+function hiddenInitialBySourceFromEntries(entries) {
+  const next = emptyHiddenInitialBySource();
+  const seenBySource = Object.fromEntries(SOURCE_KEYS.map((source) => [source, Object.fromEntries(LEVELS.map((level) => [level, new Set()]))]));
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    const decoded = decodeHiddenInitialEntry(entry);
+    if (!decoded || seenBySource[decoded.source][decoded.level].has(decoded.coord)) continue;
+    seenBySource[decoded.source][decoded.level].add(decoded.coord);
+    next[decoded.source][decoded.level].push(decoded.coord);
+  }
+  return next;
+}
+
+function entriesFromState(usedBySource, hiddenInitialBySource) {
   const normalized = normalizeUsedBySource(usedBySource);
+  const normalizedHidden = normalizeUsedBySource(hiddenInitialBySource);
   const entries = [];
   for (const source of SOURCE_KEYS) {
     for (const level of LEVELS) {
       for (const coord of normalized[source][level]) entries.push(encodeUsedEntry(source, level, coord));
+      for (const coord of normalizedHidden[source][level]) entries.push(encodeHiddenInitialEntry(source, level, coord));
     }
   }
   return entries;
 }
 
-function stateResponse(usedBySource, updatedAt) {
+function stateResponse(usedBySource, updatedAt, hiddenInitialBySource = emptyHiddenInitialBySource()) {
   const normalized = normalizeUsedBySource(usedBySource);
+  const normalizedHidden = normalizeUsedBySource(hiddenInitialBySource);
   return {
     used: normalized[DEFAULT_SOURCE][DEFAULT_LEVEL],
     usedByLevel: normalized[DEFAULT_SOURCE],
     usedBySource: normalized,
+    hiddenInitialBySource: normalizedHidden,
     updatedAt,
   };
 }
@@ -195,21 +231,25 @@ async function loadState() {
     const usedBySource = data.usedBySource
       ? normalizeUsedBySource(data.usedBySource)
       : usedBySourceFromEntries(Array.isArray(data.used) ? data.used : []);
+    const hiddenInitialBySource = data.hiddenInitialBySource
+      ? normalizeUsedBySource(data.hiddenInitialBySource)
+      : hiddenInitialBySourceFromEntries(Array.isArray(data.used) ? data.used : []);
     if (!data.usedBySource && data.usedByLevel) usedBySource[DEFAULT_SOURCE] = normalizeUsedByLevel(data.usedByLevel);
-    return stateResponse(usedBySource, typeof data.updatedAt === "string" ? data.updatedAt : null);
+    return stateResponse(usedBySource, typeof data.updatedAt === "string" ? data.updatedAt : null, hiddenInitialBySource);
   } catch {
     return stateResponse(emptyUsedBySource(), null);
   }
 }
 
-async function saveState(usedBySource) {
-  if (USE_SUPABASE) return await saveUsedToSupabase(usedBySource);
+async function saveState(usedBySource, hiddenInitialBySource = emptyHiddenInitialBySource()) {
+  if (USE_SUPABASE) return await saveUsedToSupabase(usedBySource, hiddenInitialBySource);
 
   const clean = normalizeUsedBySource(usedBySource);
+  const hidden = normalizeUsedBySource(hiddenInitialBySource);
   const updatedAt = new Date().toISOString();
   await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.writeFile(DATA_FILE, JSON.stringify({ used: clean[DEFAULT_SOURCE][DEFAULT_LEVEL], usedByLevel: clean[DEFAULT_SOURCE], usedBySource: clean, updatedAt }, null, 2), "utf8");
-  return stateResponse(clean, updatedAt);
+  await fs.writeFile(DATA_FILE, JSON.stringify({ used: clean[DEFAULT_SOURCE][DEFAULT_LEVEL], usedByLevel: clean[DEFAULT_SOURCE], usedBySource: clean, hiddenInitialBySource: hidden, updatedAt }, null, 2), "utf8");
+  return stateResponse(clean, updatedAt, hidden);
 }
 
 function supabaseHeaders(extra = {}) {
@@ -241,7 +281,9 @@ async function loadUsedFromSupabase() {
   const rows = await supabaseRequest(
     supabaseTableUrl("?select=coord,updated_at&order=position.asc"),
   );
-  const usedBySource = usedBySourceFromEntries(Array.isArray(rows) ? rows.map((row) => row.coord) : []);
+  const entries = Array.isArray(rows) ? rows.map((row) => row.coord) : [];
+  const usedBySource = usedBySourceFromEntries(entries);
+  const hiddenInitialBySource = hiddenInitialBySourceFromEntries(entries);
   const updatedAt = Array.isArray(rows)
     ? rows.reduce((latest, row) => {
         if (typeof row.updated_at !== "string") return latest;
@@ -249,12 +291,13 @@ async function loadUsedFromSupabase() {
         return latest;
       }, null)
     : null;
-  return stateResponse(usedBySource, updatedAt);
+  return stateResponse(usedBySource, updatedAt, hiddenInitialBySource);
 }
 
-async function saveUsedToSupabase(usedBySource) {
+async function saveUsedToSupabase(usedBySource, hiddenInitialBySource = emptyHiddenInitialBySource()) {
   const clean = normalizeUsedBySource(usedBySource);
-  const entries = entriesFromUsedBySource(clean);
+  const hidden = normalizeUsedBySource(hiddenInitialBySource);
+  const entries = entriesFromState(clean, hidden);
   const updatedAt = new Date().toISOString();
   await supabaseRequest(supabaseTableUrl("?coord=not.is.null"), {
     method: "DELETE",
@@ -272,7 +315,7 @@ async function saveUsedToSupabase(usedBySource) {
     },
     body: JSON.stringify(rows),
   });
-  return stateResponse(clean, updatedAt);
+  return stateResponse(clean, updatedAt, hidden);
 }
 
 function pruneActiveClients(now = Date.now()) {
@@ -435,17 +478,30 @@ async function handleApi(req, res, url) {
     const body = await readBody(req);
     const state = await loadState();
     const usedBySource = normalizeUsedBySource(state.usedBySource);
+    const hiddenInitialBySource = normalizeUsedBySource(state.hiddenInitialBySource);
     const source = normalizeSource(body.source);
     const level = normalizeLevel(body.level);
     let used = usedBySource[source][level];
-    if (body.clear === true) used = [];
+    let hiddenInitial = hiddenInitialBySource[source][level];
+    if (body.clear === true) {
+      used = [];
+      hiddenInitial = [];
+    }
     for (const coord of Array.isArray(body.add) ? body.add : []) {
       if (isUsedCoordinate(coord) && !used.includes(coord)) used.push(coord);
+      hiddenInitial = hiddenInitial.filter((item) => item !== coord);
+    }
+    for (const coord of Array.isArray(body.hideInitial) ? body.hideInitial : []) {
+      if (isUsedCoordinate(coord) && !hiddenInitial.includes(coord)) hiddenInitial.push(coord);
+      used = used.filter((item) => item !== coord);
     }
     const remove = new Set((Array.isArray(body.remove) ? body.remove : []).filter(isUsedCoordinate));
     if (remove.size) used = used.filter((coord) => !remove.has(coord));
+    const unhide = new Set((Array.isArray(body.unhideInitial) ? body.unhideInitial : []).filter(isUsedCoordinate));
+    if (unhide.size) hiddenInitial = hiddenInitial.filter((coord) => !unhide.has(coord));
     usedBySource[source][level] = used;
-    return json(res, 200, await saveState(usedBySource));
+    hiddenInitialBySource[source][level] = hiddenInitial;
+    return json(res, 200, await saveState(usedBySource, hiddenInitialBySource));
   }
 
   return json(res, 404, { error: "not found" });

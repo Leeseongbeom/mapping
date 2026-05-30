@@ -100,6 +100,7 @@ const layers = {
   supplyBySource: {},
   savedUsedBySource: {},
   initialUsedBySource: {},
+  hiddenInitialBySource: {},
 };
 const buildings = createBuildings();
 const STORAGE_KEY = "lastwar-coordinate-map-v2";
@@ -233,12 +234,14 @@ function syncActiveLayers() {
   if (!sourceHasLevel(activeSource, activeLevel)) activeLevel = firstLevelForSource(activeSource);
   layers.supply = layers.supplyBySource[activeSource]?.[activeLevel] || new Set();
   const initialUsed = layers.initialUsedBySource[activeSource]?.[activeLevel] || new Set();
+  const hiddenInitial = layers.hiddenInitialBySource[activeSource]?.[activeLevel] || new Set();
   const savedUsed = layers.savedUsedBySource[activeSource]?.[activeLevel] || new Set();
-  layers.used = new Set([...initialUsed, ...savedUsed]);
+  layers.used = new Set([...Array.from(initialUsed).filter((coord) => !hiddenInitial.has(coord)), ...savedUsed]);
 }
 
 function applyState(data) {
   layers.savedUsedBySource = normalizeUsedBySource(data.usedBySource);
+  layers.hiddenInitialBySource = normalizeUsedBySource(data.hiddenInitialBySource);
   if (!data.usedBySource) {
     layers.savedUsedBySource[DEFAULT_SOURCE] = normalizeUsedByLevel(data.usedByLevel);
     if (!data.usedByLevel && Array.isArray(data.used)) {
@@ -275,6 +278,7 @@ async function loadInitialData() {
   layers.supplyBySource = {};
   layers.savedUsedBySource = emptyUsedBySource();
   layers.initialUsedBySource = emptyUsedBySource();
+  layers.hiddenInitialBySource = emptyUsedBySource();
   for (const source of SOURCE_KEYS) {
     layers.supplyBySource[source] = {};
     for (const level of LEVELS) {
@@ -308,6 +312,7 @@ async function loadInitialData() {
       const parsed = JSON.parse(saved);
       if (parsed.usedBySource) {
         layers.savedUsedBySource = normalizeUsedBySource(parsed.usedBySource);
+        layers.hiddenInitialBySource = normalizeUsedBySource(parsed.hiddenInitialBySource);
       } else if (parsed.usedByLevel) {
         layers.savedUsedBySource[DEFAULT_SOURCE] = normalizeUsedByLevel(parsed.usedByLevel);
       } else {
@@ -547,6 +552,12 @@ function saveLocalFallback() {
       Object.fromEntries(LEVELS.map((level) => [level, Array.from(layers.savedUsedBySource[source]?.[level] || [])])),
     ]),
   );
+  const hiddenInitialBySource = Object.fromEntries(
+    SOURCE_KEYS.map((source) => [
+      source,
+      Object.fromEntries(LEVELS.map((level) => [level, Array.from(layers.hiddenInitialBySource[source]?.[level] || [])])),
+    ]),
+  );
   const usedByLevel = usedBySource[DEFAULT_SOURCE];
   localStorage.setItem(
     STORAGE_KEY,
@@ -554,6 +565,7 @@ function saveLocalFallback() {
       used: usedByLevel[DEFAULT_LEVEL],
       usedByLevel,
       usedBySource,
+      hiddenInitialBySource,
       updatedAt: latestUpdatedAt,
     }),
   );
@@ -665,7 +677,10 @@ function getManualUsed() {
 }
 
 function isInitialUsedCoordinate(coord) {
-  return Boolean(layers.initialUsedBySource[activeSource]?.[activeLevel]?.has(coord));
+  return Boolean(
+    layers.initialUsedBySource[activeSource]?.[activeLevel]?.has(coord) &&
+      !layers.hiddenInitialBySource[activeSource]?.[activeLevel]?.has(coord),
+  );
 }
 
 function isInNineByNine(centerCoord, targetCoord) {
@@ -861,7 +876,8 @@ async function applyMapClick(point) {
 
   const used = findNearestVisibleCoordinate(layers.used, point);
   if (used) {
-    const ok = await mutateUsed({ remove: [used] });
+    const payload = isInitialUsedCoordinate(used) ? { remove: [used], hideInitial: [used] } : { remove: [used] };
+    const ok = await mutateUsed(payload);
     if (ok) {
       startCoordinatePulse(used, layers.supply.has(used) ? "#6aa6ff" : "#b779ff", false);
       setMessage(`${used} 사용 표시를 취소했습니다.`);
@@ -1030,11 +1046,8 @@ async function handleListAction(event) {
     return;
   }
   if (action === "remove") {
-    if (isInitialUsedCoordinate(coord)) {
-      setMessage(`${coord}는 ${SUPPLY_SOURCES[activeSource].label} 출처에서 이미 사용 표시된 좌표입니다.`);
-      return;
-    }
-    const ok = await mutateUsed({ remove: [coord] });
+    const payload = isInitialUsedCoordinate(coord) ? { remove: [coord], hideInitial: [coord] } : { remove: [coord] };
+    const ok = await mutateUsed(payload);
     if (ok) {
       startCoordinatePulse(coord, layers.supply.has(coord) ? "#6aa6ff" : "#b779ff");
       setMessage(`${coord} 사용 표시를 취소했습니다.`);
@@ -1676,7 +1689,8 @@ document.getElementById("pasteAddButton").addEventListener("click", () => pasteI
 document.getElementById("addButton").addEventListener("click", () => addCoordinates(addInput.value));
 document.getElementById("clearButton").addEventListener("click", () => {
   if (!confirm(`${activeLevel}단계 사용한 보급품 목록을 모두 비울까요?`)) return;
-  mutateUsed({ clear: true }).then((ok) => {
+  const initialUsed = Array.from(layers.initialUsedBySource[activeSource]?.[activeLevel] || []);
+  mutateUsed({ clear: true, hideInitial: initialUsed }).then((ok) => {
     if (ok) setMessage(`${activeLevel}단계 사용한 보급품 목록을 모두 비웠습니다.`);
   });
 });
