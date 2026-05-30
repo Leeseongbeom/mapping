@@ -178,6 +178,8 @@ h1 {
 .source-label {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  width: 130px;
   min-height: 24px;
   padding: 3px 8px;
   border: 1px solid rgba(250, 204, 21, 0.36);
@@ -400,6 +402,11 @@ button.primary:hover {
   padding: 7px 12px;
   border-radius: 999px;
   font-weight: 700;
+}
+
+.source-tabs button {
+  width: 120px;
+  text-align: center;
 }
 
 .level-tabs button.is-active,
