@@ -1,7 +1,7 @@
 FROM node:22-alpine
 
 WORKDIR /app
-COPY package.json server.js index.html app.js styles.css supply-data.js geumgo-data.js ./
+COPY package.json server.js index.html app.js styles.css supply-data.js geumgo-data.js source-level-coordinates.txt ./
 COPY data ./data
 
 ENV PORT=4174
