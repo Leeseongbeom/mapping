@@ -317,7 +317,8 @@ button.primary:hover {
   background: #facc15;
 }
 
-.level-tabs {
+.level-tabs,
+.source-tabs {
   display: flex;
   gap: 8px;
   padding: 0 0 14px;
@@ -326,16 +327,19 @@ button.primary:hover {
   scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
 }
 
-.level-tabs::-webkit-scrollbar {
+.level-tabs::-webkit-scrollbar,
+.source-tabs::-webkit-scrollbar {
   height: 6px;
 }
 
-.level-tabs::-webkit-scrollbar-thumb {
+.level-tabs::-webkit-scrollbar-thumb,
+.source-tabs::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.14);
   border-radius: 999px;
 }
 
-.level-tabs button {
+.level-tabs button,
+.source-tabs button {
   min-width: 68px;
   min-height: 34px;
   flex: 0 0 auto;
@@ -344,7 +348,8 @@ button.primary:hover {
   font-weight: 700;
 }
 
-.level-tabs button.is-active {
+.level-tabs button.is-active,
+.source-tabs button.is-active {
   border-color: rgba(106, 166, 255, 0.72);
   background: linear-gradient(180deg, rgba(106, 166, 255, 0.26) 0%, rgba(106, 166, 255, 0.12) 100%);
   color: #ffffff;

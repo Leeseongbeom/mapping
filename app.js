@@ -1,7 +1,27 @@
+import { GEUMGO_INITIAL_USED_BY_LEVEL, GEUMGO_SUPPLY_BY_LEVEL } from "./geumgo-data.js";
 import { SUPPLY_BY_LEVEL } from "./supply-data.js";
 
 const MAP_SIZE = 1000;
-const LEVELS = Object.keys(SUPPLY_BY_LEVEL).sort((a, b) => Number(a) - Number(b));
+const SUPPLY_SOURCES = {
+  cpt: {
+    label: "CptHedgehog",
+    supplyByLevel: SUPPLY_BY_LEVEL,
+    initialUsedByLevel: {},
+    sourceUrl: "https://cpt-hedge.com/maps/season-2/supplies",
+  },
+  geumgo: {
+    label: "금고",
+    supplyByLevel: GEUMGO_SUPPLY_BY_LEVEL,
+    initialUsedByLevel: GEUMGO_INITIAL_USED_BY_LEVEL,
+    sourceUrl:
+      "https://docs.google.com/spreadsheets/d/1hE-9zooI2krrEBjOFF0E2Too51ulXqenJTP8GKemtOY/edit?gid=418127067#gid=418127067",
+  },
+};
+const SOURCE_KEYS = Object.keys(SUPPLY_SOURCES);
+const DEFAULT_SOURCE = "cpt";
+const LEVELS = [...new Set(SOURCE_KEYS.flatMap((source) => Object.keys(SUPPLY_SOURCES[source].supplyByLevel)))].sort(
+  (a, b) => Number(a) - Number(b),
+);
 const DEFAULT_LEVEL = "3";
 const BOUNDARIES = [0, 74, 149, 224, 299, 374, 449, 549, 624, 699, 774, 849, 924, 999];
 const BUILDING_NAMES = {
@@ -61,11 +81,13 @@ const searchInput = document.getElementById("searchInput");
 const toast = document.getElementById("toast");
 const updatedAtLabel = document.getElementById("updatedAtLabel");
 const sourceLabel = document.getElementById("sourceLabel");
+const sourceTabs = document.getElementById("sourceTabs");
 const bulkAddSection = document.getElementById("bulkAddSection");
 const buildingToggle = document.getElementById("buildingToggle");
 const incendiaryToggle = document.getElementById("incendiaryToggle");
 const furnaceToggle = document.getElementById("furnaceToggle");
 const recommendationToggle = document.getElementById("recommendationToggle");
+const clearTempButton = document.getElementById("clearTempButton");
 const recommendationSection = document.getElementById("recommendationSection");
 const recommendationList = document.getElementById("recommendationList");
 const recommendationCount = document.getElementById("recommendationCount");
@@ -75,12 +97,14 @@ const levelTabs = document.getElementById("levelTabs");
 const layers = {
   supply: new Set(),
   used: new Set(),
-  supplyByLevel: {},
-  usedByLevel: {},
+  supplyBySource: {},
+  savedUsedBySource: {},
+  initialUsedBySource: {},
 };
 const buildings = createBuildings();
 const STORAGE_KEY = "lastwar-coordinate-map-v2";
 const LEVEL_STORAGE_KEY = "lastwar-active-supply-level";
+const SOURCE_STORAGE_KEY = "lastwar-active-supply-source";
 const LEGACY_STORAGE_KEY = "lastwar-coordinate-map-v1";
 const API_BASE = location.protocol === "file:" ? "http://127.0.0.1:4174" : "";
 const ADMIN_TOKEN_KEY = "lastwar-admin-token";
@@ -88,6 +112,7 @@ const BUILDING_TOGGLE_KEY = "lastwar-show-buildings";
 const INCENDIARY_TOGGLE_KEY = "lastwar-show-incendiary";
 const FURNACE_TOGGLE_KEY = "lastwar-show-furnace";
 const RECOMMENDATION_TOGGLE_KEY = "lastwar-show-incendiary-recommendations";
+const TEMP_RANGES_KEY = "lastwar-temp-ranges";
 const CLIENT_ID_KEY = "lastwar-client-id";
 const VISIT_RECORDED_KEY = "lastwar-visit-recorded-date";
 const HEARTBEAT_MS = 30 * 1000;
@@ -110,13 +135,46 @@ let hoverMapPoint = null;
 let clientId = "";
 let heartbeatTimer = null;
 let statsTimer = null;
+let activeSource = normalizeSource(localStorage.getItem(SOURCE_STORAGE_KEY) || DEFAULT_SOURCE);
 let activeLevel = normalizeLevel(localStorage.getItem(LEVEL_STORAGE_KEY) || DEFAULT_LEVEL);
 let pulses = [];
 let pulseFrame = null;
 let activeRecommendationId = "";
+let tempRanges = loadTempRanges();
 
 function keyOf(x, y) {
   return `${x},${y}`;
+}
+
+function loadTempRanges() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(TEMP_RANGES_KEY) || "[]");
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (item) =>
+        (item?.type === "incendiary" || item?.type === "furnace") &&
+        Number.isInteger(item.x) &&
+        Number.isInteger(item.y) &&
+        item.x >= 0 &&
+        item.x <= 999 &&
+        item.y >= 0 &&
+        item.y <= 999,
+    );
+  } catch {
+    return [];
+  }
+}
+
+function saveTempRanges() {
+  localStorage.setItem(TEMP_RANGES_KEY, JSON.stringify(tempRanges));
+}
+
+function addTempRange(type, point) {
+  const item = { type, x: point.x, y: point.y };
+  tempRanges.push(item);
+  saveTempRanges();
+  draw();
+  setMessage(`${type === "furnace" ? "용광로" : "연소탄"} 임시 위치 ${point.x},${point.y}를 표시했습니다.`);
 }
 
 function normalizeLevel(value) {
@@ -124,8 +182,25 @@ function normalizeLevel(value) {
   return LEVELS.includes(level) ? level : DEFAULT_LEVEL;
 }
 
+function normalizeSource(value) {
+  const source = String(value || DEFAULT_SOURCE);
+  return SOURCE_KEYS.includes(source) ? source : DEFAULT_SOURCE;
+}
+
+function sourceHasLevel(source, level) {
+  return Boolean(SUPPLY_SOURCES[normalizeSource(source)].supplyByLevel[normalizeLevel(level)]);
+}
+
+function firstLevelForSource(source) {
+  return Object.keys(SUPPLY_SOURCES[normalizeSource(source)].supplyByLevel).sort((a, b) => Number(a) - Number(b))[0] || DEFAULT_LEVEL;
+}
+
 function emptyUsedByLevel() {
   return Object.fromEntries(LEVELS.map((level) => [level, new Set()]));
+}
+
+function emptyUsedBySource() {
+  return Object.fromEntries(SOURCE_KEYS.map((source) => [source, emptyUsedByLevel()]));
 }
 
 function normalizeUsedByLevel(input) {
@@ -139,20 +214,36 @@ function normalizeUsedByLevel(input) {
   return next;
 }
 
+function normalizeUsedBySource(input) {
+  const next = emptyUsedBySource();
+  if (!input || typeof input !== "object") return next;
+  for (const source of SOURCE_KEYS) {
+    next[source] = normalizeUsedByLevel(input[source]);
+  }
+  return next;
+}
+
 function isCoordinateText(value) {
   return typeof value === "string" && /^\d{1,3},\d{1,3}$/.test(value);
 }
 
 function syncActiveLayers() {
+  activeSource = normalizeSource(activeSource);
   activeLevel = normalizeLevel(activeLevel);
-  layers.supply = layers.supplyByLevel[activeLevel] || new Set();
-  layers.used = layers.usedByLevel[activeLevel] || new Set();
+  if (!sourceHasLevel(activeSource, activeLevel)) activeLevel = firstLevelForSource(activeSource);
+  layers.supply = layers.supplyBySource[activeSource]?.[activeLevel] || new Set();
+  const initialUsed = layers.initialUsedBySource[activeSource]?.[activeLevel] || new Set();
+  const savedUsed = layers.savedUsedBySource[activeSource]?.[activeLevel] || new Set();
+  layers.used = new Set([...initialUsed, ...savedUsed]);
 }
 
 function applyState(data) {
-  layers.usedByLevel = normalizeUsedByLevel(data.usedByLevel);
-  if (!data.usedByLevel && Array.isArray(data.used)) {
-    layers.usedByLevel[DEFAULT_LEVEL] = new Set(data.used.filter(isCoordinateText));
+  layers.savedUsedBySource = normalizeUsedBySource(data.usedBySource);
+  if (!data.usedBySource) {
+    layers.savedUsedBySource[DEFAULT_SOURCE] = normalizeUsedByLevel(data.usedByLevel);
+    if (!data.usedByLevel && Array.isArray(data.used)) {
+      layers.savedUsedBySource[DEFAULT_SOURCE][DEFAULT_LEVEL] = new Set(data.used.filter(isCoordinateText));
+    }
   }
   syncActiveLayers();
   latestUpdatedAt = data.updatedAt || "";
@@ -181,16 +272,25 @@ function parseCoordinates(text) {
 }
 
 async function loadInitialData() {
-  for (const level of LEVELS) {
-    layers.supplyByLevel[level] = new Set();
-    layers.usedByLevel[level] = new Set();
-    for (const [x, y] of parseCoordinates(SUPPLY_BY_LEVEL[level] || "").parsed) {
-      layers.supplyByLevel[level].add(keyOf(x, y));
+  layers.supplyBySource = {};
+  layers.savedUsedBySource = emptyUsedBySource();
+  layers.initialUsedBySource = emptyUsedBySource();
+  for (const source of SOURCE_KEYS) {
+    layers.supplyBySource[source] = {};
+    for (const level of LEVELS) {
+      layers.supplyBySource[source][level] = new Set();
+      for (const [x, y] of parseCoordinates(SUPPLY_SOURCES[source].supplyByLevel[level] || "").parsed) {
+        layers.supplyBySource[source][level].add(keyOf(x, y));
+      }
+      for (const [x, y] of parseCoordinates(SUPPLY_SOURCES[source].initialUsedByLevel[level] || "").parsed) {
+        layers.initialUsedBySource[source][level].add(keyOf(x, y));
+      }
     }
   }
   syncActiveLayers();
 
   setAdminMode(isAdmin, isAdmin ? "관리자 모드" : "보기 전용 모드");
+  renderSourceTabs();
   renderLevelTabs();
 
   try {
@@ -206,11 +306,13 @@ async function loadInitialData() {
   if (saved) {
     try {
       const parsed = JSON.parse(saved);
-      if (parsed.usedByLevel) {
-        layers.usedByLevel = normalizeUsedByLevel(parsed.usedByLevel);
+      if (parsed.usedBySource) {
+        layers.savedUsedBySource = normalizeUsedBySource(parsed.usedBySource);
+      } else if (parsed.usedByLevel) {
+        layers.savedUsedBySource[DEFAULT_SOURCE] = normalizeUsedByLevel(parsed.usedByLevel);
       } else {
-        layers.usedByLevel = emptyUsedByLevel();
-        layers.usedByLevel[DEFAULT_LEVEL] = new Set(Array.isArray(parsed.used) ? parsed.used.filter(isCoordinateText) : []);
+        layers.savedUsedBySource = emptyUsedBySource();
+        layers.savedUsedBySource[DEFAULT_SOURCE][DEFAULT_LEVEL] = new Set(Array.isArray(parsed.used) ? parsed.used.filter(isCoordinateText) : []);
       }
       syncActiveLayers();
       latestUpdatedAt = parsed.updatedAt || "";
@@ -220,7 +322,7 @@ async function loadInitialData() {
       localStorage.removeItem(STORAGE_KEY);
     }
   }
-  for (const [x, y] of parseCoordinates(INITIAL_USED).parsed) layers.usedByLevel[DEFAULT_LEVEL].add(keyOf(x, y));
+  for (const [x, y] of parseCoordinates(INITIAL_USED).parsed) layers.savedUsedBySource[DEFAULT_SOURCE][DEFAULT_LEVEL].add(keyOf(x, y));
   syncActiveLayers();
   latestUpdatedAt = new Date().toISOString();
   refresh("사진 좌표를 불러왔습니다. 파란 보급품 핀을 클릭하면 사용 목록으로 이동합니다.");
@@ -254,14 +356,28 @@ function setAdminMode(nextIsAdmin, text) {
 function renderLevelTabs() {
   for (const button of levelTabs.querySelectorAll("button[data-level]")) {
     const selected = button.dataset.level === activeLevel;
+    const available = sourceHasLevel(activeSource, button.dataset.level);
+    button.classList.toggle("is-active", selected);
+    button.setAttribute("aria-selected", String(selected));
+    button.disabled = !available;
+    button.hidden = !available;
+  }
+  sourceLabel.hidden = false;
+  sourceLabel.href = SUPPLY_SOURCES[activeSource].sourceUrl;
+  sourceLabel.textContent = `출처 ${SUPPLY_SOURCES[activeSource].label}`;
+}
+
+function renderSourceTabs() {
+  for (const button of sourceTabs.querySelectorAll("button[data-source]")) {
+    const selected = button.dataset.source === activeSource;
     button.classList.toggle("is-active", selected);
     button.setAttribute("aria-selected", String(selected));
   }
-  sourceLabel.hidden = activeLevel === DEFAULT_LEVEL;
 }
 
 function setActiveLevel(level) {
   activeLevel = normalizeLevel(level);
+  if (!sourceHasLevel(activeSource, activeLevel)) activeLevel = firstLevelForSource(activeSource);
   localStorage.setItem(LEVEL_STORAGE_KEY, activeLevel);
   syncActiveLayers();
   pulses = [];
@@ -272,6 +388,23 @@ function setActiveLevel(level) {
   activeRecommendationId = "";
   renderLevelTabs();
   refresh(`${activeLevel}단계 보급품을 표시합니다.`);
+}
+
+function setActiveSource(source) {
+  activeSource = normalizeSource(source);
+  if (!sourceHasLevel(activeSource, activeLevel)) activeLevel = firstLevelForSource(activeSource);
+  localStorage.setItem(SOURCE_STORAGE_KEY, activeSource);
+  localStorage.setItem(LEVEL_STORAGE_KEY, activeLevel);
+  syncActiveLayers();
+  pulses = [];
+  if (pulseFrame) {
+    cancelAnimationFrame(pulseFrame);
+    pulseFrame = null;
+  }
+  activeRecommendationId = "";
+  renderSourceTabs();
+  renderLevelTabs();
+  refresh(`${SUPPLY_SOURCES[activeSource].label} 출처로 전환했습니다.`);
 }
 
 function getOrCreateClientId() {
@@ -398,7 +531,8 @@ function refresh(text) {
   supplyCount.textContent = getRemainingSupply().size.toLocaleString("ko-KR");
   usedCount.textContent = layers.used.size.toLocaleString("ko-KR");
   updatedAtLabel.textContent = formatUpdatedAt(latestUpdatedAt);
-  sourceLabel.hidden = activeLevel === DEFAULT_LEVEL;
+  renderSourceTabs();
+  renderLevelTabs();
   saveLocalFallback();
   setMessage(text);
   renderList();
@@ -407,12 +541,19 @@ function refresh(text) {
 }
 
 function saveLocalFallback() {
-  const usedByLevel = Object.fromEntries(LEVELS.map((level) => [level, Array.from(layers.usedByLevel[level] || [])]));
+  const usedBySource = Object.fromEntries(
+    SOURCE_KEYS.map((source) => [
+      source,
+      Object.fromEntries(LEVELS.map((level) => [level, Array.from(layers.savedUsedBySource[source]?.[level] || [])])),
+    ]),
+  );
+  const usedByLevel = usedBySource[DEFAULT_SOURCE];
   localStorage.setItem(
     STORAGE_KEY,
     JSON.stringify({
       used: usedByLevel[DEFAULT_LEVEL],
       usedByLevel,
+      usedBySource,
       updatedAt: latestUpdatedAt,
     }),
   );
@@ -428,7 +569,7 @@ async function mutateUsed(payload, pendingText) {
     if (pendingText) setMessage(pendingText);
     const data = await apiFetch("/api/used", {
       method: "POST",
-      body: JSON.stringify({ level: activeLevel, ...payload }),
+      body: JSON.stringify({ source: activeSource, level: activeLevel, ...payload }),
     });
     applyState({ ...data, updatedAt: data.updatedAt || new Date().toISOString() });
     refresh("반영되었습니다.");
@@ -521,6 +662,10 @@ function getManualUsed() {
     if (!layers.supply.has(coord)) used.add(coord);
   }
   return used;
+}
+
+function isInitialUsedCoordinate(coord) {
+  return Boolean(layers.initialUsedBySource[activeSource]?.[activeLevel]?.has(coord));
 }
 
 function isInNineByNine(centerCoord, targetCoord) {
@@ -885,6 +1030,10 @@ async function handleListAction(event) {
     return;
   }
   if (action === "remove") {
+    if (isInitialUsedCoordinate(coord)) {
+      setMessage(`${coord}는 ${SUPPLY_SOURCES[activeSource].label} 출처에서 이미 사용 표시된 좌표입니다.`);
+      return;
+    }
     const ok = await mutateUsed({ remove: [coord] });
     if (ok) {
       startCoordinatePulse(coord, layers.supply.has(coord) ? "#6aa6ff" : "#b779ff");
@@ -910,6 +1059,7 @@ function draw() {
   drawLayer(rect, getConfirmedUsed(), "#ff6b6b", 1);
   drawManualLayer(rect, getManualUsed(), "#b779ff");
   if (showRecommendations) drawRecommendationLayer(rect);
+  drawTempRanges(rect);
   drawPulses(rect);
   if (showIncendiary && hoverMapPoint) {
     drawIncendiaryRange(rect, hoverMapPoint.x, hoverMapPoint.y);
@@ -918,6 +1068,13 @@ function draw() {
     drawFurnaceRange(rect, hoverMapPoint.x, hoverMapPoint.y);
   }
   drawFrame(rect);
+}
+
+function drawTempRanges(rect) {
+  for (const item of tempRanges) {
+    if (item.type === "furnace") drawFurnaceRange(rect, item.x, item.y);
+    else drawIncendiaryRange(rect, item.x, item.y);
+  }
 }
 
 function drawMapRect(rect, minX, minY, maxX, maxY, fillStyle, strokeStyle, lineWidth) {
@@ -1572,6 +1729,12 @@ recommendationToggle.addEventListener("click", () => {
   draw();
   setMessage(showRecommendations ? "연소탄 추천을 표시합니다." : "연소탄 추천을 숨겼습니다.");
 });
+clearTempButton.addEventListener("click", () => {
+  tempRanges = [];
+  saveTempRanges();
+  draw();
+  setMessage("임시 표시를 모두 지웠습니다.");
+});
 document.getElementById("copySupplyButton").addEventListener("click", () => copyLayer("supply"));
 document.getElementById("copyUsedButton").addEventListener("click", () => copyLayer("used"));
 adminLoginButton.addEventListener("click", loginAdmin);
@@ -1585,8 +1748,13 @@ usedList.addEventListener("click", handleListAction);
 recommendationList.addEventListener("click", handleRecommendationAction);
 levelTabs.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-level]");
-  if (!button) return;
+  if (!button || button.disabled) return;
   setActiveLevel(button.dataset.level);
+});
+sourceTabs.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-source]");
+  if (!button) return;
+  setActiveSource(button.dataset.source);
 });
 
 canvas.addEventListener("mousemove", (event) => {
@@ -1636,7 +1804,8 @@ canvas.addEventListener("mousedown", (event) => {
 window.addEventListener("mouseup", (event) => {
   if (isDragging && dragStart && !dragStart.didDrag && event.target === canvas) {
     const point = canvasPoint(event);
-    if (!showIncendiary && !showFurnace) applyMapClick(point);
+    if (showFurnace || showIncendiary) addTempRange(showFurnace ? "furnace" : "incendiary", screenToMap(point));
+    else applyMapClick(point);
   }
   isDragging = false;
 });
@@ -1650,7 +1819,7 @@ canvas.addEventListener(
       if (showIncendiary || showFurnace) {
         hoverMapPoint = screenToMap(point);
         hoverCoord.textContent = `좌표: ${hoverMapPoint.x},${hoverMapPoint.y}`;
-        touchGesture = { type: "preview" };
+        touchGesture = { type: "preview", ...point, didDrag: false };
         draw();
         event.preventDefault();
         return;
@@ -1677,6 +1846,8 @@ canvas.addEventListener(
 
     if (event.touches.length === 1 && touchGesture.type === "preview") {
       const point = touchPoint(event.touches[0]);
+      const moved = Math.hypot(point.x - touchGesture.x, point.y - touchGesture.y);
+      if (moved > 3) touchGesture.didDrag = true;
       const coord = screenToMap(point);
       hoverCoord.textContent = `좌표: ${coord.x},${coord.y}`;
       const prev = hoverMapPoint;
@@ -1732,13 +1903,20 @@ canvas.addEventListener(
       !showIncendiary && !showFurnace
     ) {
       applyMapClick(touchPoint(event.changedTouches[0]));
+    } else if (
+      touchGesture?.type === "preview" &&
+      !touchGesture.didDrag &&
+      event.changedTouches.length === 1 &&
+      (showIncendiary || showFurnace)
+    ) {
+      addTempRange(showFurnace ? "furnace" : "incendiary", screenToMap(touchPoint(event.changedTouches[0])));
     }
     if (event.touches.length === 0) {
       touchGesture = null;
     } else if (event.touches.length === 1) {
       const point = touchPoint(event.touches[0]);
       if (showIncendiary || showFurnace) {
-        touchGesture = { type: "preview" };
+        touchGesture = { type: "preview", ...point, didDrag: true };
       } else {
         touchGesture = { type: "pan", ...point, viewX: view.x, viewY: view.y, didDrag: true };
       }

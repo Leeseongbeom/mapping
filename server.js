@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { GEUMGO_SUPPLY_BY_LEVEL } from "./geumgo-data.js";
 import { SUPPLY_BY_LEVEL } from "./supply-data.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -19,10 +20,26 @@ const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const SUPABASE_TABLE = process.env.SUPABASE_TABLE || "used_coordinates";
 const USE_SUPABASE = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
-const LEVELS = Object.keys(SUPPLY_BY_LEVEL).sort((a, b) => Number(a) - Number(b));
+const SUPPLY_SOURCES = {
+  cpt: SUPPLY_BY_LEVEL,
+  geumgo: GEUMGO_SUPPLY_BY_LEVEL,
+};
+const SOURCE_KEYS = Object.keys(SUPPLY_SOURCES);
+const DEFAULT_SOURCE = "cpt";
+const LEVELS = [...new Set(SOURCE_KEYS.flatMap((source) => Object.keys(SUPPLY_SOURCES[source])))].sort(
+  (a, b) => Number(a) - Number(b),
+);
 const DEFAULT_LEVEL = "3";
 const SUPPLY_SETS = Object.fromEntries(
-  LEVELS.map((level) => [level, new Set(parseCoordinates(SUPPLY_BY_LEVEL[level]).map(([x, y]) => `${x},${y}`))]),
+  SOURCE_KEYS.map((source) => [
+    source,
+    Object.fromEntries(
+      LEVELS.map((level) => [
+        level,
+        new Set(parseCoordinates(SUPPLY_SOURCES[source][level] || "").map(([x, y]) => `${x},${y}`)),
+      ]),
+    ),
+  ]),
 );
 
 const MIME = {
@@ -63,6 +80,11 @@ function normalizeLevel(value) {
   return LEVELS.includes(level) ? level : DEFAULT_LEVEL;
 }
 
+function normalizeSource(value) {
+  const source = String(value || DEFAULT_SOURCE);
+  return SOURCE_KEYS.includes(source) ? source : DEFAULT_SOURCE;
+}
+
 function parseCoordinates(text) {
   const matches = text.match(/-?\d+/g) || [];
   const parsed = [];
@@ -78,7 +100,7 @@ function parseCoordinates(text) {
 }
 
 function isSupplyCoordinate(value) {
-  return LEVELS.some((level) => isCoordinate(value) && SUPPLY_SETS[level].has(value));
+  return SOURCE_KEYS.some((source) => LEVELS.some((level) => isCoordinate(value) && SUPPLY_SETS[source][level].has(value)));
 }
 
 function isUsedCoordinate(value) {
@@ -89,17 +111,25 @@ function emptyUsedByLevel() {
   return Object.fromEntries(LEVELS.map((level) => [level, []]));
 }
 
-function decodeUsedEntry(value) {
-  if (typeof value !== "string") return null;
-  const match = value.match(/^L([2-7]):(.+)$/);
-  const level = match ? normalizeLevel(match[1]) : DEFAULT_LEVEL;
-  const coord = match ? match[2] : value;
-  if (!isCoordinate(coord)) return null;
-  return { level, coord };
+function emptyUsedBySource() {
+  return Object.fromEntries(SOURCE_KEYS.map((source) => [source, emptyUsedByLevel()]));
 }
 
-function encodeUsedEntry(level, coord) {
+function decodeUsedEntry(value) {
+  if (typeof value !== "string") return null;
+  const geumgoMatch = value.match(/^G([1-7]):(.+)$/);
+  const cptMatch = value.match(/^L([1-7]):(.+)$/);
+  const source = geumgoMatch ? "geumgo" : DEFAULT_SOURCE;
+  const level = geumgoMatch ? normalizeLevel(geumgoMatch[1]) : cptMatch ? normalizeLevel(cptMatch[1]) : DEFAULT_LEVEL;
+  const coord = geumgoMatch ? geumgoMatch[2] : cptMatch ? cptMatch[2] : value;
+  if (!isCoordinate(coord)) return null;
+  return { source, level, coord };
+}
+
+function encodeUsedEntry(source, level, coord) {
+  const normalizedSource = normalizeSource(source);
   const normalizedLevel = normalizeLevel(level);
+  if (normalizedSource === "geumgo") return `G${normalizedLevel}:${coord}`;
   return normalizedLevel === DEFAULT_LEVEL ? coord : `L${normalizedLevel}:${coord}`;
 }
 
@@ -117,32 +147,42 @@ function normalizeUsedByLevel(input) {
   return next;
 }
 
-function usedByLevelFromEntries(entries) {
-  const next = emptyUsedByLevel();
-  const seenByLevel = Object.fromEntries(LEVELS.map((level) => [level, new Set()]));
+function normalizeUsedBySource(input) {
+  const next = emptyUsedBySource();
+  if (!input || typeof input !== "object") return next;
+  for (const source of SOURCE_KEYS) next[source] = normalizeUsedByLevel(input[source]);
+  return next;
+}
+
+function usedBySourceFromEntries(entries) {
+  const next = emptyUsedBySource();
+  const seenBySource = Object.fromEntries(SOURCE_KEYS.map((source) => [source, Object.fromEntries(LEVELS.map((level) => [level, new Set()]))]));
   for (const entry of Array.isArray(entries) ? entries : []) {
     const decoded = decodeUsedEntry(entry);
-    if (!decoded || seenByLevel[decoded.level].has(decoded.coord)) continue;
-    seenByLevel[decoded.level].add(decoded.coord);
-    next[decoded.level].push(decoded.coord);
+    if (!decoded || seenBySource[decoded.source][decoded.level].has(decoded.coord)) continue;
+    seenBySource[decoded.source][decoded.level].add(decoded.coord);
+    next[decoded.source][decoded.level].push(decoded.coord);
   }
   return next;
 }
 
-function entriesFromUsedByLevel(usedByLevel) {
-  const normalized = normalizeUsedByLevel(usedByLevel);
+function entriesFromUsedBySource(usedBySource) {
+  const normalized = normalizeUsedBySource(usedBySource);
   const entries = [];
-  for (const level of LEVELS) {
-    for (const coord of normalized[level]) entries.push(encodeUsedEntry(level, coord));
+  for (const source of SOURCE_KEYS) {
+    for (const level of LEVELS) {
+      for (const coord of normalized[source][level]) entries.push(encodeUsedEntry(source, level, coord));
+    }
   }
   return entries;
 }
 
-function stateResponse(usedByLevel, updatedAt) {
-  const normalized = normalizeUsedByLevel(usedByLevel);
+function stateResponse(usedBySource, updatedAt) {
+  const normalized = normalizeUsedBySource(usedBySource);
   return {
-    used: normalized[DEFAULT_LEVEL],
-    usedByLevel: normalized,
+    used: normalized[DEFAULT_SOURCE][DEFAULT_LEVEL],
+    usedByLevel: normalized[DEFAULT_SOURCE],
+    usedBySource: normalized,
     updatedAt,
   };
 }
@@ -152,22 +192,23 @@ async function loadState() {
 
   try {
     const data = JSON.parse(await fs.readFile(DATA_FILE, "utf8"));
-    const usedByLevel = data.usedByLevel
-      ? normalizeUsedByLevel(data.usedByLevel)
-      : usedByLevelFromEntries(Array.isArray(data.used) ? data.used : []);
-    return stateResponse(usedByLevel, typeof data.updatedAt === "string" ? data.updatedAt : null);
+    const usedBySource = data.usedBySource
+      ? normalizeUsedBySource(data.usedBySource)
+      : usedBySourceFromEntries(Array.isArray(data.used) ? data.used : []);
+    if (!data.usedBySource && data.usedByLevel) usedBySource[DEFAULT_SOURCE] = normalizeUsedByLevel(data.usedByLevel);
+    return stateResponse(usedBySource, typeof data.updatedAt === "string" ? data.updatedAt : null);
   } catch {
-    return stateResponse(emptyUsedByLevel(), null);
+    return stateResponse(emptyUsedBySource(), null);
   }
 }
 
-async function saveState(usedByLevel) {
-  if (USE_SUPABASE) return await saveUsedToSupabase(usedByLevel);
+async function saveState(usedBySource) {
+  if (USE_SUPABASE) return await saveUsedToSupabase(usedBySource);
 
-  const clean = normalizeUsedByLevel(usedByLevel);
+  const clean = normalizeUsedBySource(usedBySource);
   const updatedAt = new Date().toISOString();
   await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.writeFile(DATA_FILE, JSON.stringify({ used: clean[DEFAULT_LEVEL], usedByLevel: clean, updatedAt }, null, 2), "utf8");
+  await fs.writeFile(DATA_FILE, JSON.stringify({ used: clean[DEFAULT_SOURCE][DEFAULT_LEVEL], usedByLevel: clean[DEFAULT_SOURCE], usedBySource: clean, updatedAt }, null, 2), "utf8");
   return stateResponse(clean, updatedAt);
 }
 
@@ -200,7 +241,7 @@ async function loadUsedFromSupabase() {
   const rows = await supabaseRequest(
     supabaseTableUrl("?select=coord,updated_at&order=position.asc"),
   );
-  const usedByLevel = usedByLevelFromEntries(Array.isArray(rows) ? rows.map((row) => row.coord) : []);
+  const usedBySource = usedBySourceFromEntries(Array.isArray(rows) ? rows.map((row) => row.coord) : []);
   const updatedAt = Array.isArray(rows)
     ? rows.reduce((latest, row) => {
         if (typeof row.updated_at !== "string") return latest;
@@ -208,12 +249,12 @@ async function loadUsedFromSupabase() {
         return latest;
       }, null)
     : null;
-  return stateResponse(usedByLevel, updatedAt);
+  return stateResponse(usedBySource, updatedAt);
 }
 
-async function saveUsedToSupabase(usedByLevel) {
-  const clean = normalizeUsedByLevel(usedByLevel);
-  const entries = entriesFromUsedByLevel(clean);
+async function saveUsedToSupabase(usedBySource) {
+  const clean = normalizeUsedBySource(usedBySource);
+  const entries = entriesFromUsedBySource(clean);
   const updatedAt = new Date().toISOString();
   await supabaseRequest(supabaseTableUrl("?coord=not.is.null"), {
     method: "DELETE",
@@ -393,17 +434,18 @@ async function handleApi(req, res, url) {
     if (!verifyToken(req)) return json(res, 401, { error: "admin required" });
     const body = await readBody(req);
     const state = await loadState();
-    const usedByLevel = normalizeUsedByLevel(state.usedByLevel);
+    const usedBySource = normalizeUsedBySource(state.usedBySource);
+    const source = normalizeSource(body.source);
     const level = normalizeLevel(body.level);
-    let used = usedByLevel[level];
+    let used = usedBySource[source][level];
     if (body.clear === true) used = [];
     for (const coord of Array.isArray(body.add) ? body.add : []) {
       if (isUsedCoordinate(coord) && !used.includes(coord)) used.push(coord);
     }
     const remove = new Set((Array.isArray(body.remove) ? body.remove : []).filter(isUsedCoordinate));
     if (remove.size) used = used.filter((coord) => !remove.has(coord));
-    usedByLevel[level] = used;
-    return json(res, 200, await saveState(usedByLevel));
+    usedBySource[source][level] = used;
+    return json(res, 200, await saveState(usedBySource));
   }
 
   return json(res, 404, { error: "not found" });
