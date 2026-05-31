@@ -170,6 +170,22 @@ function saveTempRanges() {
   localStorage.setItem(TEMP_RANGES_KEY, JSON.stringify(tempRanges));
 }
 
+function syncRangeModeToggles() {
+  localStorage.setItem(INCENDIARY_TOGGLE_KEY, showIncendiary ? "1" : "0");
+  localStorage.setItem(FURNACE_TOGGLE_KEY, showFurnace ? "1" : "0");
+  incendiaryToggle.setAttribute("aria-pressed", String(showIncendiary));
+  incendiaryToggle.classList.toggle("is-active", showIncendiary);
+  furnaceToggle.setAttribute("aria-pressed", String(showFurnace));
+  furnaceToggle.classList.toggle("is-active", showFurnace);
+  if (!showIncendiary && !showFurnace) hoverMapPoint = null;
+}
+
+function setRangeMode(mode) {
+  showIncendiary = mode === "incendiary";
+  showFurnace = mode === "furnace";
+  syncRangeModeToggles();
+}
+
 function addTempRange(type, point) {
   const item = { type, x: point.x, y: point.y };
   tempRanges.push(item);
@@ -965,7 +981,7 @@ function startCoordinatePulse(coordText, color = markerColorForCoordinate(coordT
   if (!isCoordinateText(coordText)) return;
   if (shouldFocus && !coordinateIsInView(coordText)) focusCoordinate(coordText);
   pulses = pulses.filter((pulse) => pulse.coord !== coordText);
-  pulses.push({ coord: coordText, color, startedAt: performance.now(), duration: 1200 });
+  pulses.push({ coord: coordText, color, startedAt: performance.now(), duration: 1800 });
   draw();
   schedulePulseFrame();
 }
@@ -1073,7 +1089,6 @@ function draw() {
   drawManualLayer(rect, getManualUsed(), "#b779ff");
   if (showRecommendations) drawRecommendationLayer(rect);
   drawTempRanges(rect);
-  drawPulses(rect);
   if (showIncendiary && hoverMapPoint) {
     drawIncendiaryRange(rect, hoverMapPoint.x, hoverMapPoint.y);
   }
@@ -1081,6 +1096,7 @@ function draw() {
     drawFurnaceRange(rect, hoverMapPoint.x, hoverMapPoint.y);
   }
   drawFrame(rect);
+  drawPulses(rect);
 }
 
 function drawTempRanges(rect) {
@@ -1498,25 +1514,32 @@ function drawPulses(rect) {
     const elapsed = now - pulse.startedAt;
     const progress = Math.max(0, Math.min(1, elapsed / pulse.duration));
     const p = mapToScreen(x, y, rect);
-    const maxRadius = Math.max(20, baseSize * 2.6);
+    const maxRadius = Math.max(34, baseSize * 3.6);
 
     ctx.save();
-    ctx.lineWidth = Math.max(2, baseSize * 0.13);
+    ctx.shadowColor = pulse.color;
+    ctx.shadowBlur = Math.max(8, baseSize * 0.45);
+    ctx.lineWidth = Math.max(2.4, baseSize * 0.15);
     for (let i = 0; i < 3; i += 1) {
-      const phase = progress - i * 0.18;
+      const phase = progress - i * 0.16;
       if (phase < 0 || phase > 1) continue;
       const ease = 1 - Math.pow(1 - phase, 2);
       const radius = baseSize * 0.55 + ease * maxRadius;
-      ctx.globalAlpha = Math.max(0, 0.75 * (1 - phase));
+      ctx.globalAlpha = Math.max(0, 0.88 * (1 - phase));
       ctx.strokeStyle = pulse.color;
       ctx.beginPath();
       ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
       ctx.stroke();
     }
-    ctx.globalAlpha = Math.max(0, 0.45 * (1 - progress));
+    ctx.globalAlpha = Math.max(0, 0.34 * (1 - progress));
     ctx.fillStyle = pulse.color;
     ctx.beginPath();
-    ctx.arc(p.x, p.y, Math.max(4, baseSize * 0.4), 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, Math.max(12, baseSize * 0.9) + progress * Math.max(18, baseSize), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = Math.max(0, 0.9 * (1 - progress * 0.45));
+    ctx.fillStyle = pulse.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, Math.max(5, baseSize * 0.42), 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
@@ -1707,29 +1730,21 @@ buildingToggle.addEventListener("click", () => {
   setMessage(showBuildings ? "건물 표시를 켰습니다." : "건물 표시를 껐습니다.");
 });
 incendiaryToggle.addEventListener("click", () => {
-  showIncendiary = !showIncendiary;
-  localStorage.setItem(INCENDIARY_TOGGLE_KEY, showIncendiary ? "1" : "0");
-  incendiaryToggle.setAttribute("aria-pressed", String(showIncendiary));
-  incendiaryToggle.classList.toggle("is-active", showIncendiary);
-  if (!showIncendiary && !showFurnace) hoverMapPoint = null;
+  setRangeMode(showIncendiary ? "" : "incendiary");
   draw();
   setMessage(
     showIncendiary
-      ? "연소탄 미리보기 ON · 지도 위에 마우스를 올리거나(모바일에서는 손가락으로 터치/드래그) 9×9 범위를 확인하세요."
-      : "연소탄 미리보기를 껐습니다.",
+      ? "연소탄 찍기 ON · 지도 위에서 9×9 범위를 확인하고 클릭하면 임시 표시가 남습니다."
+      : "연소탄 찍기를 껐습니다.",
   );
 });
 furnaceToggle.addEventListener("click", () => {
-  showFurnace = !showFurnace;
-  localStorage.setItem(FURNACE_TOGGLE_KEY, showFurnace ? "1" : "0");
-  furnaceToggle.setAttribute("aria-pressed", String(showFurnace));
-  furnaceToggle.classList.toggle("is-active", showFurnace);
-  if (!showFurnace && !showIncendiary) hoverMapPoint = null;
+  setRangeMode(showFurnace ? "" : "furnace");
   draw();
   setMessage(
     showFurnace
-      ? "용광로 미리보기 ON · 중심 기준 5×5 본체와 38×38 온도 범위를 확인하세요."
-      : "용광로 미리보기를 껐습니다.",
+      ? "용광로 찍기 ON · 중심 기준 5×5 본체와 38×38 온도 범위를 확인하고 클릭하면 임시 표시가 남습니다."
+      : "용광로 찍기를 껐습니다.",
   );
 });
 recommendationToggle.addEventListener("click", () => {
@@ -1942,12 +1957,10 @@ canvas.addEventListener(
 window.addEventListener("resize", draw);
 
 canvas.style.cursor = "grab";
+if (showIncendiary && showFurnace) showFurnace = false;
 buildingToggle.setAttribute("aria-pressed", String(showBuildings));
 buildingToggle.classList.toggle("is-active", showBuildings);
-incendiaryToggle.setAttribute("aria-pressed", String(showIncendiary));
-incendiaryToggle.classList.toggle("is-active", showIncendiary);
-furnaceToggle.setAttribute("aria-pressed", String(showFurnace));
-furnaceToggle.classList.toggle("is-active", showFurnace);
+syncRangeModeToggles();
 recommendationToggle.setAttribute("aria-pressed", String(showRecommendations));
 recommendationToggle.classList.toggle("is-active", showRecommendations);
 
