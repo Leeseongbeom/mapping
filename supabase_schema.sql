@@ -3,7 +3,7 @@ create table if not exists public.used_coordinates (
   position integer not null default 0,
   updated_at timestamptz not null default now(),
   constraint used_coordinates_coord_format check (
-    coord ~ '^[0-9]{1,3},[0-9]{1,3}$'
+    coord ~ '^([0-9]{1,3},[0-9]{1,3}|L[1-7]:[0-9]{1,3},[0-9]{1,3}|G[1-7]:[0-9]{1,3},[0-9]{1,3}|H:[CG][1-7]:[0-9]{1,3},[0-9]{1,3})$'
   )
 );
 
