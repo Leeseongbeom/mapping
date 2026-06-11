@@ -288,6 +288,34 @@ function buildHistoryEntry(beforeState, afterState, meta = {}) {
   };
 }
 
+function buildSnapshotHistoryEntry(state, meta = {}) {
+  const normalizedState = snapshotState(state.usedBySource, state.hiddenInitialBySource);
+  const usedTotal = countSourceLevelItems(normalizedState.usedBySource);
+  const hiddenTotal = countSourceLevelItems(normalizedState.hiddenInitialBySource);
+  return {
+    id: crypto.randomUUID(),
+    createdAt: new Date().toISOString(),
+    source: normalizeSource(meta.source),
+    level: normalizeLevel(meta.level),
+    action: "snapshot",
+    summary: `기록 시작 스냅샷: 사용 ${usedTotal}개, 원본 숨김 ${hiddenTotal}개`,
+    totalsBefore: {
+      used: usedTotal,
+      hiddenInitial: hiddenTotal,
+    },
+    totalsAfter: {
+      used: usedTotal,
+      hiddenInitial: hiddenTotal,
+    },
+    diff: {
+      used: { added: [], removed: [] },
+      hiddenInitial: { added: [], removed: [] },
+    },
+    beforeState: normalizedState,
+    afterState: normalizedState,
+  };
+}
+
 function historyTableUrl(search = "") {
   const base = SUPABASE_URL.endsWith("/") ? SUPABASE_URL.slice(0, -1) : SUPABASE_URL;
   return `${base}/rest/v1/${SUPABASE_HISTORY_TABLE}${search}`;
@@ -326,13 +354,16 @@ async function appendHistorySupabase(entry) {
   });
 }
 
-async function appendHistory(entry) {
+async function appendHistory(entry, options = {}) {
   if (!entry) return;
   try {
     if (USE_SUPABASE) await appendHistorySupabase(entry);
     else await appendHistoryLocal(entry);
+    return true;
   } catch (error) {
     console.warn("appendHistory failed:", error.message);
+    if (options.required) throw error;
+    return false;
   }
 }
 
@@ -654,6 +685,18 @@ async function handleApi(req, res, url) {
     const result = await tryLoadHistory(limit, true);
     if (result.error) return json(res, 500, { error: result.error, history: [] });
     return json(res, 200, { history: result.history });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/history/snapshot") {
+    if (!verifySuperToken(req)) return json(res, 401, { error: "super admin required" });
+    const body = await readBody(req).catch(() => ({}));
+    const current = await loadState();
+    const entry = buildSnapshotHistoryEntry(snapshotState(current.usedBySource, current.hiddenInitialBySource), {
+      source: body.source,
+      level: body.level,
+    });
+    await appendHistory(entry, { required: true });
+    return json(res, 200, { history: compactHistoryEntry(entry, true) });
   }
 
   if (req.method === "POST" && url.pathname === "/api/history/restore") {

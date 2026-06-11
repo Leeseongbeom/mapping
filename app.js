@@ -97,6 +97,7 @@ const recommendationCount = document.getElementById("recommendationCount");
 const historySection = document.getElementById("historySection");
 const historyList = document.getElementById("historyList");
 const historyCount = document.getElementById("historyCount");
+const createHistorySnapshotButton = document.getElementById("createHistorySnapshotButton");
 const refreshHistoryButton = document.getElementById("refreshHistoryButton");
 const exitHistoryPreviewButton = document.getElementById("exitHistoryPreviewButton");
 const historyPreviewNotice = document.getElementById("historyPreviewNotice");
@@ -649,6 +650,30 @@ async function loadHistory() {
       historyList.innerHTML = `<div class="empty-list">변경 로그 저장소를 확인할 수 없습니다. Supabase에서 used_history 테이블이 생성되어 있는지 확인해 주세요.</div>`;
     }
     setMessage(`변경 로그를 불러오지 못했습니다: ${error.message}`);
+  }
+}
+
+async function createHistorySnapshot() {
+  if (!isSuperAdmin) return;
+  if (!confirm("현재 운영 상태를 변경 로그의 기준점으로 기록할까요?")) return;
+  try {
+    const data = await apiFetch("/api/history/snapshot", {
+      method: "POST",
+      body: JSON.stringify({ source: activeSource, level: activeLevel }),
+    });
+    if (data.history) {
+      historyEntries = [data.history, ...historyEntries.filter((entry) => entry.id !== data.history.id)];
+      renderHistory(historyEntries);
+    } else {
+      await loadHistory();
+    }
+    setMessage("현재 운영 상태를 변경 로그에 기록했습니다.");
+    showToast("현재 상태를 기록했습니다.");
+  } catch (error) {
+    setMessage(`현재 상태 기록 실패: ${error.message}`);
+    if (historyList) {
+      historyList.innerHTML = `<div class="empty-list">현재 상태를 기록하지 못했습니다. Supabase에서 used_history 테이블이 생성되어 있는지 확인해 주세요.</div>`;
+    }
   }
 }
 
@@ -2007,6 +2032,7 @@ clearTempButton.addEventListener("click", () => {
 });
 document.getElementById("copySupplyButton").addEventListener("click", () => copyLayer("supply"));
 document.getElementById("copyUsedButton").addEventListener("click", () => copyLayer("used"));
+createHistorySnapshotButton?.addEventListener("click", createHistorySnapshot);
 refreshHistoryButton?.addEventListener("click", loadHistory);
 exitHistoryPreviewButton?.addEventListener("click", () => clearHistoryPreview(true));
 adminLoginButton.addEventListener("click", loginAdmin);
