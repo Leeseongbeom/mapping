@@ -655,7 +655,8 @@ async function loadHistory() {
 
 async function createHistorySnapshot() {
   if (!isSuperAdmin) return;
-  if (!confirm("현재 운영 상태를 변경 로그의 기준점으로 기록할까요?")) return;
+  const label = `${historySourceLabel(activeSource)} ${activeLevel}단계`;
+  if (!confirm(`현재 선택한 ${label} 사용 상태만 변경 로그의 기준점으로 기록할까요?`)) return;
   try {
     const data = await apiFetch("/api/history/snapshot", {
       method: "POST",
@@ -667,8 +668,8 @@ async function createHistorySnapshot() {
     } else {
       await loadHistory();
     }
-    setMessage("현재 운영 상태를 변경 로그에 기록했습니다.");
-    showToast("현재 상태를 기록했습니다.");
+    setMessage(`${label} 현재 상태를 변경 로그에 기록했습니다.`);
+    showToast(`${label} 상태를 기록했습니다.`);
   } catch (error) {
     setMessage(`현재 상태 기록 실패: ${error.message}`);
     if (historyList) {

@@ -290,15 +290,18 @@ function buildHistoryEntry(beforeState, afterState, meta = {}) {
 
 function buildSnapshotHistoryEntry(state, meta = {}) {
   const normalizedState = snapshotState(state.usedBySource, state.hiddenInitialBySource);
-  const usedTotal = countSourceLevelItems(normalizedState.usedBySource);
-  const hiddenTotal = countSourceLevelItems(normalizedState.hiddenInitialBySource);
+  const source = normalizeSource(meta.source);
+  const level = normalizeLevel(meta.level);
+  const usedTotal = normalizedState.usedBySource[source][level]?.length || 0;
+  const hiddenTotal = normalizedState.hiddenInitialBySource[source][level]?.length || 0;
   return {
     id: crypto.randomUUID(),
     createdAt: new Date().toISOString(),
-    source: normalizeSource(meta.source),
-    level: normalizeLevel(meta.level),
+    source,
+    level,
+    scope: "source-level",
     action: "snapshot",
-    summary: `기록 시작 스냅샷: 사용 ${usedTotal}개, 원본 숨김 ${hiddenTotal}개`,
+    summary: `기록 시작 스냅샷: ${source} ${level}단계 사용 ${usedTotal}개, 원본 숨김 ${hiddenTotal}개`,
     totalsBefore: {
       used: usedTotal,
       hiddenInitial: hiddenTotal,
@@ -314,6 +317,18 @@ function buildSnapshotHistoryEntry(state, meta = {}) {
     beforeState: normalizedState,
     afterState: normalizedState,
   };
+}
+
+function mergeSnapshotScope(baseState, snapshot, source, level) {
+  const scopedSource = normalizeSource(source);
+  const scopedLevel = normalizeLevel(level);
+  const merged = snapshotState(baseState.usedBySource, baseState.hiddenInitialBySource);
+  const scopedSnapshot = snapshotState(snapshot.usedBySource, snapshot.hiddenInitialBySource);
+  merged.usedBySource[scopedSource][scopedLevel] = [...(scopedSnapshot.usedBySource[scopedSource][scopedLevel] || [])];
+  merged.hiddenInitialBySource[scopedSource][scopedLevel] = [
+    ...(scopedSnapshot.hiddenInitialBySource[scopedSource][scopedLevel] || []),
+  ];
+  return merged;
 }
 
 function historyTableUrl(search = "") {
@@ -376,6 +391,7 @@ function compactHistoryEntry(entry, includeSnapshots = false) {
     level: normalizeLevel(payload.level || entry.level),
     action: payload.action || entry.action || "update",
     summary: payload.summary || entry.summary || "",
+    scope: payload.scope || entry.scope || "source-level",
     totalsBefore: payload.totalsBefore || null,
     totalsAfter: payload.totalsAfter || null,
     diff: payload.diff || { used: { added: [], removed: [] }, hiddenInitial: { added: [], removed: [] } },
@@ -711,7 +727,8 @@ async function handleApi(req, res, url) {
       return json(res, 400, { error: "history snapshot is not available" });
     }
 
-    const restoredState = snapshotState(snapshot.usedBySource, snapshot.hiddenInitialBySource);
+    const current = await loadState();
+    const restoredState = mergeSnapshotScope(current, snapshot, entry.source, entry.level);
     if (body.publish !== true) {
       return json(res, 200, {
         preview: true,
@@ -720,7 +737,6 @@ async function handleApi(req, res, url) {
       });
     }
 
-    const current = await loadState();
     const beforeState = snapshotState(current.usedBySource, current.hiddenInitialBySource);
     const saved = await saveState(restoredState.usedBySource, restoredState.hiddenInitialBySource);
     const afterState = snapshotState(saved.usedBySource, saved.hiddenInitialBySource);
