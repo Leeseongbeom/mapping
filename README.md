@@ -29,6 +29,7 @@
 - 연소탄으로 2개 이상 같이 먹기 좋은 좌표 추천
 - 남은 보급품/사용한 보급품 목록 복사
 - 관리자 모드에서 대량 사용 좌표 추가
+- 상위 관리자 모드에서 사용 목록 변경 로그 열람, 버전 미리보기, 사용자 화면 반영
 - 접속자/방문자 통계 표시
 
 ## 파일 구조
@@ -95,6 +96,19 @@ H:G3:123,456  # 금고 3단계 원본 사용표시를 관리자가 취소한 숨
 
 관리자 코드는 서버 환경변수 `ADMIN_CODE`로 정합니다.
 
+## 상위 관리자 모드
+
+상위 관리자 코드는 서버 환경변수 `SUPER_ADMIN_CODE`로 정합니다. 기본값은 `lastwar2185`입니다.
+
+상위 관리자 모드에서 가능한 일:
+
+- 사용 목록 변경 로그 열람
+- 변경 로그의 `변경 전` / `변경 후` 상태를 내 화면에서만 미리보기
+- 선택한 로그의 `변경 후` 버전을 실제 사용자 화면에 반영
+- 미리보기 중 `실시간 목록으로 돌아가기`
+
+일반 관리자(`ADMIN_CODE`)는 좌표 수정은 가능하지만 변경 로그와 버전 반영 기능은 볼 수 없습니다.
+
 ## 로컬 실행
 
 Node.js 20 이상이 필요합니다.
@@ -118,7 +132,7 @@ http://127.0.0.1:4174
 다른 포트로 실행:
 
 ```bash
-PORT=4198 ADMIN_CODE="원하는관리자암호" npm start
+PORT=4198 ADMIN_CODE="원하는관리자암호" SUPER_ADMIN_CODE="상위관리자암호" npm start
 ```
 
 ## Supabase 설정
@@ -137,7 +151,9 @@ Supabase를 쓰면 Render가 재시작되거나 재배포되어도 사용 좌표
 SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVICE_ROLE_KEY
 SUPABASE_TABLE=used_coordinates
+SUPABASE_HISTORY_TABLE=used_history
 ADMIN_CODE=원하는관리자암호
+SUPER_ADMIN_CODE=상위관리자암호
 ```
 
 주의:
@@ -161,9 +177,11 @@ Dockerfile: Dockerfile
 
 ```text
 ADMIN_CODE=원하는관리자암호
+SUPER_ADMIN_CODE=상위관리자암호
 SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVICE_ROLE_KEY
 SUPABASE_TABLE=used_coordinates
+SUPABASE_HISTORY_TABLE=used_history
 ```
 
 Render 무료 플랜은 일정 시간 접속이 없으면 잠들 수 있습니다. 이 경우 첫 접속이 조금 느릴 수 있습니다.
@@ -220,6 +238,7 @@ git diff --check
 - 보라색 핀 주변에는 9x9 빗금 영역이 표시되어, 잘못 적힌 좌표 근처의 보급품이 사용되었을 가능성을 판단할 수 있습니다.
 - 연소탄 찍기와 용광로 찍기는 동시에 켜지지 않습니다. 하나를 켜면 다른 하나는 꺼집니다.
 - `현재 단계 사용 전체 취소`는 현재 선택한 출처와 단계에만 적용됩니다.
+- 변경 로그는 `used_history`에 저장됩니다. Supabase 운영 환경에서는 `supabase_schema.sql`을 한 번 실행해 테이블을 만들어야 합니다.
 - `source-level-coordinates.txt`는 확인용 텍스트 파일입니다. 앱 데이터 자체는 `supply-data.js`, `geumgo-data.js`가 기준입니다.
 
 ## 주의사항

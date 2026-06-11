@@ -94,6 +94,12 @@ const clearTempButton = document.getElementById("clearTempButton");
 const recommendationSection = document.getElementById("recommendationSection");
 const recommendationList = document.getElementById("recommendationList");
 const recommendationCount = document.getElementById("recommendationCount");
+const historySection = document.getElementById("historySection");
+const historyList = document.getElementById("historyList");
+const historyCount = document.getElementById("historyCount");
+const refreshHistoryButton = document.getElementById("refreshHistoryButton");
+const exitHistoryPreviewButton = document.getElementById("exitHistoryPreviewButton");
+const historyPreviewNotice = document.getElementById("historyPreviewNotice");
 const statsLabel = document.getElementById("statsLabel");
 const levelTabs = document.getElementById("levelTabs");
 
@@ -112,6 +118,7 @@ const SOURCE_STORAGE_KEY = "lastwar-active-supply-source";
 const LEGACY_STORAGE_KEY = "lastwar-coordinate-map-v1";
 const API_BASE = location.protocol === "file:" ? "http://127.0.0.1:4174" : "";
 const ADMIN_TOKEN_KEY = "lastwar-admin-token";
+const ADMIN_ROLE_KEY = "lastwar-admin-role";
 const BUILDING_TOGGLE_KEY = "lastwar-show-buildings";
 const INCENDIARY_TOGGLE_KEY = "lastwar-show-incendiary";
 const FURNACE_TOGGLE_KEY = "lastwar-show-furnace";
@@ -129,7 +136,9 @@ let dragStart = null;
 let touchGesture = null;
 let lastTouchAt = 0;
 let adminToken = sessionStorage.getItem(ADMIN_TOKEN_KEY) || "";
+let adminRole = sessionStorage.getItem(ADMIN_ROLE_KEY) || decodeAdminRole(adminToken);
 let isAdmin = Boolean(adminToken);
+let isSuperAdmin = adminRole === "super";
 let toastTimer = null;
 let latestUpdatedAt = "";
 let showBuildings = localStorage.getItem(BUILDING_TOGGLE_KEY) === "1";
@@ -146,9 +155,22 @@ let pulses = [];
 let pulseFrame = null;
 let activeRecommendationId = "";
 let tempRanges = loadTempRanges();
+let historyEntries = [];
+let isHistoryPreview = false;
 
 function keyOf(x, y) {
   return `${x},${y}`;
+}
+
+function decodeAdminRole(token) {
+  if (!token || !token.includes(".")) return "";
+  try {
+    const encoded = token.split(".")[0].replace(/-/g, "+").replace(/_/g, "/");
+    const payload = JSON.parse(atob(encoded.padEnd(Math.ceil(encoded.length / 4) * 4, "=")));
+    return payload.role === "super" ? "super" : "admin";
+  } catch {
+    return "";
+  }
 }
 
 function loadTempRanges() {
@@ -370,12 +392,22 @@ async function apiFetch(path, options = {}) {
 
 function setAdminMode(nextIsAdmin, text) {
   isAdmin = nextIsAdmin;
+  isSuperAdmin = isAdmin && adminRole === "super";
   document.body.classList.toggle("is-admin", isAdmin);
+  document.body.classList.toggle("is-super-admin", isSuperAdmin);
   bulkAddSection.hidden = !isAdmin;
+  if (historySection) historySection.hidden = !isSuperAdmin;
+  if (!isSuperAdmin) {
+    historyEntries = [];
+    if (historyList) historyList.innerHTML = "";
+    if (historyCount) historyCount.textContent = "0개";
+    clearHistoryPreview(false);
+  }
   recommendationSection.hidden = !showRecommendations;
-  adminState.textContent = text || (isAdmin ? "관리자 모드" : "보기 전용 모드");
+  adminState.textContent = text || (isSuperAdmin ? "상위 관리자 모드" : isAdmin ? "관리자 모드" : "보기 전용 모드");
   if (isAdmin) startStatsPolling();
   else stopStatsPolling();
+  if (isSuperAdmin) loadHistory();
 }
 
 function renderLevelTabs() {
@@ -529,6 +561,157 @@ async function refreshStats() {
   }
 }
 
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function formatHistoryTime(value) {
+  const label = formatUpdatedAt(value);
+  return label === "최신화 -" ? "-" : label.replace("최신화 ", "");
+}
+
+function historySourceLabel(source) {
+  return SUPPLY_SOURCES[normalizeSource(source)]?.label || source;
+}
+
+function historyCoordButtons(coords, className, label, max = 10) {
+  const visible = coords.slice(0, max);
+  const buttons = visible
+    .map(
+      (coord) =>
+        `<button class="history-coord ${className}" type="button" data-action="history-jump" data-coord="${coord}" title="${label}">${coord}</button>`,
+    )
+    .join("");
+  const hidden = coords.length > visible.length ? `<span class="history-meta">+${coords.length - visible.length}개</span>` : "";
+  return buttons + hidden;
+}
+
+function renderHistory(entries = historyEntries) {
+  if (!historyList || !historyCount) return;
+  historyEntries = Array.isArray(entries) ? entries : [];
+  historyCount.textContent = `${historyEntries.length.toLocaleString("ko-KR")}개`;
+
+  if (!historyEntries.length) {
+    historyList.innerHTML = `<div class="empty-list">아직 변경 로그가 없습니다.</div>`;
+    return;
+  }
+
+  historyList.innerHTML = historyEntries
+    .map((entry) => {
+      const usedAdded = entry.diff?.used?.added || [];
+      const usedRemoved = entry.diff?.used?.removed || [];
+      const hiddenAdded = entry.diff?.hiddenInitial?.added || [];
+      const hiddenRemoved = entry.diff?.hiddenInitial?.removed || [];
+      const addedCoords = [...usedAdded, ...hiddenRemoved];
+      const removedCoords = [...usedRemoved, ...hiddenAdded];
+      const coordsHtml = [
+        addedCoords.length ? historyCoordButtons(addedCoords, "added", "사용으로 바뀐 좌표") : "",
+        removedCoords.length ? historyCoordButtons(removedCoords, "removed", "미사용으로 바뀐 좌표") : "",
+      ]
+        .filter(Boolean)
+        .join("");
+
+      return `
+        <article class="history-row" data-history-id="${entry.id}">
+          <div class="history-row-header">
+            <span class="history-meta">${formatHistoryTime(entry.createdAt)} · ${historySourceLabel(entry.source)} ${entry.level}단계</span>
+            <span class="history-meta">${entry.action || "update"}</span>
+          </div>
+          <div class="history-summary">${escapeHtml(entry.summary || "변경 사항")}</div>
+          ${coordsHtml ? `<div class="history-coords">${coordsHtml}</div>` : ""}
+          <div class="history-row-actions">
+            <button class="row-action" type="button" data-action="history-preview" data-id="${entry.id}" data-snapshot="before">변경 전 보기</button>
+            <button class="row-action" type="button" data-action="history-preview" data-id="${entry.id}" data-snapshot="after">변경 후 보기</button>
+            <button class="row-action history-publish-button" type="button" data-action="history-publish" data-id="${entry.id}">이 버전을 사용자 화면에 반영</button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+async function loadHistory() {
+  if (!isSuperAdmin) return;
+  try {
+    const data = await apiFetch("/api/history?limit=100");
+    renderHistory(data.history || []);
+  } catch (error) {
+    renderHistory([]);
+    if (error.status === 401 || error.status === 403) {
+      logoutAdmin("상위 관리자 코드가 만료되었거나 올바르지 않습니다.");
+      return;
+    }
+    setMessage(`변경 로그를 불러오지 못했습니다: ${error.message}`);
+  }
+}
+
+async function previewHistoryVersion(id, snapshot) {
+  if (!isSuperAdmin) return;
+  const entry = historyEntries.find((item) => item.id === id);
+  try {
+    const data = await apiFetch("/api/history/restore", {
+      method: "POST",
+      body: JSON.stringify({ historyId: id, snapshot, publish: false }),
+    });
+    if (entry) {
+      activeSource = normalizeSource(entry.source);
+      activeLevel = normalizeLevel(entry.level);
+      localStorage.setItem(SOURCE_STORAGE_KEY, activeSource);
+      localStorage.setItem(LEVEL_STORAGE_KEY, activeLevel);
+    }
+    applyState(data.state);
+    isHistoryPreview = true;
+    if (historyPreviewNotice) historyPreviewNotice.hidden = false;
+    if (exitHistoryPreviewButton) exitHistoryPreviewButton.hidden = false;
+    refresh(`${snapshot === "before" ? "변경 전" : "변경 후"} 버전을 내 화면에서만 미리봅니다.`);
+  } catch (error) {
+    setMessage(`버전 미리보기 실패: ${error.message}`);
+  }
+}
+
+async function publishHistoryVersion(id) {
+  if (!isSuperAdmin) return;
+  if (!confirm("이 변경 로그의 '변경 후' 버전을 실제 사용자 화면에 반영할까요?")) return;
+  try {
+    const data = await apiFetch("/api/history/restore", {
+      method: "POST",
+      body: JSON.stringify({ historyId: id, snapshot: "after", publish: true }),
+    });
+    applyState(data.state);
+    isHistoryPreview = false;
+    if (historyPreviewNotice) historyPreviewNotice.hidden = true;
+    if (exitHistoryPreviewButton) exitHistoryPreviewButton.hidden = true;
+    refresh("선택한 버전을 사용자 화면에 반영했습니다.");
+    showToast("사용자 화면에 반영되었습니다.");
+    loadHistory();
+  } catch (error) {
+    setMessage(`버전 반영 실패: ${error.message}`);
+  }
+}
+
+async function clearHistoryPreview(reloadLive = true) {
+  if (!isHistoryPreview) {
+    if (historyPreviewNotice) historyPreviewNotice.hidden = true;
+    if (exitHistoryPreviewButton) exitHistoryPreviewButton.hidden = true;
+    return;
+  }
+  isHistoryPreview = false;
+  if (historyPreviewNotice) historyPreviewNotice.hidden = true;
+  if (exitHistoryPreviewButton) exitHistoryPreviewButton.hidden = true;
+  if (!reloadLive) return;
+  try {
+    const data = await apiFetch("/api/state");
+    applyState(data);
+    refresh("실시간 사용자 화면 기준 목록으로 돌아왔습니다.");
+  } catch (error) {
+    setMessage(`실시간 목록 복귀 실패: ${error.message}`);
+  }
+}
+
 function startStatsPolling() {
   stopStatsPolling();
   refreshStats();
@@ -600,6 +783,7 @@ function refresh(text) {
 }
 
 function saveLocalFallback() {
+  if (isHistoryPreview) return;
   const usedBySource = Object.fromEntries(
     SOURCE_KEYS.map((source) => [
       source,
@@ -630,6 +814,10 @@ async function mutateUsed(payload, pendingText) {
     setMessage("관리자 코드 입력 후 수정할 수 있습니다.");
     return false;
   }
+  if (isHistoryPreview) {
+    setMessage("변경 로그 미리보기 중입니다. 실시간 목록으로 돌아간 뒤 수정해 주세요.");
+    return false;
+  }
 
   try {
     if (pendingText) setMessage(pendingText);
@@ -640,6 +828,7 @@ async function mutateUsed(payload, pendingText) {
     applyState({ ...data, updatedAt: data.updatedAt || new Date().toISOString() });
     refresh("반영되었습니다.");
     showToast("반영되었습니다.");
+    if (isSuperAdmin) loadHistory();
     return true;
   } catch (error) {
     if (error.status === 401 || error.status === 403) {
@@ -1727,11 +1916,14 @@ async function loginAdmin() {
       body: JSON.stringify({ code }),
     });
     adminToken = data.token || "";
+    adminRole = data.role || decodeAdminRole(adminToken) || "admin";
+    isSuperAdmin = adminRole === "super";
     sessionStorage.setItem(ADMIN_TOKEN_KEY, adminToken);
+    sessionStorage.setItem(ADMIN_ROLE_KEY, adminRole);
     adminCodeInput.value = "";
-    setAdminMode(true, "관리자 모드");
-    refresh("관리자 모드로 전환되었습니다.");
-    showToast("관리자 모드입니다.");
+    setAdminMode(true, isSuperAdmin ? "상위 관리자 모드" : "관리자 모드");
+    refresh(isSuperAdmin ? "상위 관리자 모드로 전환되었습니다." : "관리자 모드로 전환되었습니다.");
+    showToast(isSuperAdmin ? "상위 관리자 모드입니다." : "관리자 모드입니다.");
   } catch (error) {
     logoutAdmin("관리자 코드가 맞지 않습니다.");
   }
@@ -1739,7 +1931,11 @@ async function loginAdmin() {
 
 function logoutAdmin(text = "보기 전용 모드") {
   adminToken = "";
+  adminRole = "";
+  isSuperAdmin = false;
   sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+  sessionStorage.removeItem(ADMIN_ROLE_KEY);
+  clearHistoryPreview(false);
   setAdminMode(false, text);
   renderList();
   draw();
@@ -1808,6 +2004,8 @@ clearTempButton.addEventListener("click", () => {
 });
 document.getElementById("copySupplyButton").addEventListener("click", () => copyLayer("supply"));
 document.getElementById("copyUsedButton").addEventListener("click", () => copyLayer("used"));
+refreshHistoryButton?.addEventListener("click", loadHistory);
+exitHistoryPreviewButton?.addEventListener("click", () => clearHistoryPreview(true));
 adminLoginButton.addEventListener("click", loginAdmin);
 adminLogoutButton.addEventListener("click", () => logoutAdmin("보기 전용 모드"));
 adminCodeInput.addEventListener("keydown", (event) => {
@@ -1817,6 +2015,22 @@ searchInput.addEventListener("input", renderList);
 supplyList.addEventListener("click", handleListAction);
 usedList.addEventListener("click", handleListAction);
 recommendationList.addEventListener("click", handleRecommendationAction);
+historyList?.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-action]");
+  if (!button) return;
+  const action = button.dataset.action;
+  if (action === "history-jump") {
+    jumpToCoordinate(button.dataset.coord);
+    return;
+  }
+  if (action === "history-preview") {
+    previewHistoryVersion(button.dataset.id, button.dataset.snapshot);
+    return;
+  }
+  if (action === "history-publish") {
+    publishHistoryVersion(button.dataset.id);
+  }
+});
 levelTabs.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-level]");
   if (!button || button.disabled) return;

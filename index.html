@@ -137,6 +137,22 @@
           </div>
         </section>
 
+        <section id="historySection" class="control-section history-section super-admin-only" hidden>
+          <div class="section-header">
+            <h2>변경 로그</h2>
+            <span id="historyCount">0개</span>
+          </div>
+          <p class="section-help">상위 관리자 전용입니다. 로그 시점을 내 화면에서만 미리 보거나, 선택한 버전을 사용자 화면에 반영할 수 있습니다.</p>
+          <div class="button-row history-actions">
+            <button id="refreshHistoryButton" type="button">로그 새로고침</button>
+            <button id="exitHistoryPreviewButton" class="super-admin-only" type="button" hidden>실시간 목록으로 돌아가기</button>
+          </div>
+          <div id="historyPreviewNotice" class="history-preview-notice" hidden>
+            변경 로그 미리보기 중입니다. 이 상태는 내 화면에만 보입니다.
+          </div>
+          <div id="historyList" class="history-list" aria-live="polite"></div>
+        </section>
+
         <section id="recommendationSection" class="control-section recommendation-section" hidden>
           <div class="section-header">
             <h2>연소탄 추천</h2>

@@ -9,9 +9,11 @@ import { SUPPLY_BY_LEVEL } from "./supply-data.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 4174);
 const ADMIN_CODE = process.env.ADMIN_CODE || "change-me";
+const SUPER_ADMIN_CODE = process.env.SUPER_ADMIN_CODE || "lastwar2185";
 const TOKEN_TTL_MS = 1000 * 60 * 60 * 12;
 const DATA_DIR = path.join(__dirname, "data");
 const DATA_FILE = path.join(DATA_DIR, "used.json");
+const HISTORY_FILE = path.join(DATA_DIR, "used-history.json");
 const VISITS_FILE = path.join(DATA_DIR, "visits.json");
 const ACTIVE_TTL_MS = 90 * 1000;
 const HEARTBEAT_MAX_CLIENTS = 10000;
@@ -19,6 +21,7 @@ const activeClients = new Map();
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const SUPABASE_TABLE = process.env.SUPABASE_TABLE || "used_coordinates";
+const SUPABASE_HISTORY_TABLE = process.env.SUPABASE_HISTORY_TABLE || "used_history";
 const USE_SUPABASE = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
 const SUPPLY_SOURCES = {
   cpt: SUPPLY_BY_LEVEL,
@@ -223,6 +226,164 @@ function stateResponse(usedBySource, updatedAt, hiddenInitialBySource = emptyHid
   };
 }
 
+function snapshotState(usedBySource, hiddenInitialBySource = emptyHiddenInitialBySource()) {
+  return {
+    usedBySource: normalizeUsedBySource(usedBySource),
+    hiddenInitialBySource: normalizeUsedBySource(hiddenInitialBySource),
+  };
+}
+
+function countSourceLevelItems(collection) {
+  let total = 0;
+  for (const source of SOURCE_KEYS) {
+    for (const level of LEVELS) total += collection?.[source]?.[level]?.length || 0;
+  }
+  return total;
+}
+
+function sourceLevelDiff(beforeItems = [], afterItems = []) {
+  const before = new Set(Array.isArray(beforeItems) ? beforeItems : []);
+  const after = new Set(Array.isArray(afterItems) ? afterItems : []);
+  return {
+    added: [...after].filter((coord) => !before.has(coord)),
+    removed: [...before].filter((coord) => !after.has(coord)),
+  };
+}
+
+function buildHistoryEntry(beforeState, afterState, meta = {}) {
+  const source = normalizeSource(meta.source);
+  const level = normalizeLevel(meta.level);
+  const usedDiff = sourceLevelDiff(beforeState.usedBySource[source][level], afterState.usedBySource[source][level]);
+  const hiddenDiff = sourceLevelDiff(beforeState.hiddenInitialBySource[source][level], afterState.hiddenInitialBySource[source][level]);
+  const changedCount = usedDiff.added.length + usedDiff.removed.length + hiddenDiff.added.length + hiddenDiff.removed.length;
+  if (changedCount === 0) return null;
+
+  const summaryParts = [];
+  if (usedDiff.added.length) summaryParts.push(`사용 추가 ${usedDiff.added.length}개`);
+  if (usedDiff.removed.length) summaryParts.push(`사용 취소 ${usedDiff.removed.length}개`);
+  if (hiddenDiff.added.length) summaryParts.push(`원본 사용 숨김 ${hiddenDiff.added.length}개`);
+  if (hiddenDiff.removed.length) summaryParts.push(`원본 사용 복구 ${hiddenDiff.removed.length}개`);
+
+  return {
+    id: crypto.randomUUID(),
+    createdAt: new Date().toISOString(),
+    source,
+    level,
+    action: meta.action || "update",
+    summary: summaryParts.join(", "),
+    totalsBefore: {
+      used: countSourceLevelItems(beforeState.usedBySource),
+      hiddenInitial: countSourceLevelItems(beforeState.hiddenInitialBySource),
+    },
+    totalsAfter: {
+      used: countSourceLevelItems(afterState.usedBySource),
+      hiddenInitial: countSourceLevelItems(afterState.hiddenInitialBySource),
+    },
+    diff: {
+      used: usedDiff,
+      hiddenInitial: hiddenDiff,
+    },
+    beforeState,
+    afterState,
+  };
+}
+
+function historyTableUrl(search = "") {
+  const base = SUPABASE_URL.endsWith("/") ? SUPABASE_URL.slice(0, -1) : SUPABASE_URL;
+  return `${base}/rest/v1/${SUPABASE_HISTORY_TABLE}${search}`;
+}
+
+async function appendHistoryLocal(entry) {
+  if (!entry) return;
+  let history = [];
+  try {
+    const data = JSON.parse(await fs.readFile(HISTORY_FILE, "utf8"));
+    if (Array.isArray(data)) history = data;
+  } catch {}
+  history.push(entry);
+  history = history.slice(-1000);
+  await fs.mkdir(DATA_DIR, { recursive: true });
+  await fs.writeFile(HISTORY_FILE, JSON.stringify(history, null, 2), "utf8");
+}
+
+async function appendHistorySupabase(entry) {
+  if (!entry) return;
+  await supabaseRequest(historyTableUrl(), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify({
+      id: entry.id,
+      created_at: entry.createdAt,
+      source: entry.source,
+      level: entry.level,
+      action: entry.action,
+      summary: entry.summary,
+      payload: entry,
+    }),
+  });
+}
+
+async function appendHistory(entry) {
+  if (!entry) return;
+  try {
+    if (USE_SUPABASE) await appendHistorySupabase(entry);
+    else await appendHistoryLocal(entry);
+  } catch (error) {
+    console.warn("appendHistory failed:", error.message);
+  }
+}
+
+function compactHistoryEntry(entry, includeSnapshots = false) {
+  const payload = entry.payload && typeof entry.payload === "object" ? entry.payload : entry;
+  const compact = {
+    id: payload.id || entry.id,
+    createdAt: payload.createdAt || entry.created_at || entry.createdAt,
+    source: normalizeSource(payload.source || entry.source),
+    level: normalizeLevel(payload.level || entry.level),
+    action: payload.action || entry.action || "update",
+    summary: payload.summary || entry.summary || "",
+    totalsBefore: payload.totalsBefore || null,
+    totalsAfter: payload.totalsAfter || null,
+    diff: payload.diff || { used: { added: [], removed: [] }, hiddenInitial: { added: [], removed: [] } },
+  };
+  if (includeSnapshots) {
+    compact.beforeState = payload.beforeState || null;
+    compact.afterState = payload.afterState || null;
+  }
+  return compact;
+}
+
+async function loadHistoryLocal(limit = 100, includeSnapshots = false) {
+  try {
+    const data = JSON.parse(await fs.readFile(HISTORY_FILE, "utf8"));
+    const entries = Array.isArray(data) ? data : [];
+    return entries.slice(-limit).reverse().map((entry) => compactHistoryEntry(entry, includeSnapshots));
+  } catch {
+    return [];
+  }
+}
+
+async function loadHistorySupabase(limit = 100, includeSnapshots = false) {
+  const safeLimit = Math.max(1, Math.min(500, Number(limit) || 100));
+  const rows = await supabaseRequest(
+    historyTableUrl(`?select=id,created_at,source,level,action,summary,payload&order=created_at.desc&limit=${safeLimit}`),
+  );
+  return (Array.isArray(rows) ? rows : []).map((entry) => compactHistoryEntry(entry, includeSnapshots));
+}
+
+async function loadHistory(limit = 100, includeSnapshots = false) {
+  try {
+    if (USE_SUPABASE) return await loadHistorySupabase(limit, includeSnapshots);
+    return await loadHistoryLocal(limit, includeSnapshots);
+  } catch (error) {
+    console.warn("loadHistory failed:", error.message);
+    return [];
+  }
+}
+
 async function loadState() {
   if (USE_SUPABASE) return await loadUsedFromSupabase();
 
@@ -304,7 +465,7 @@ async function saveUsedToSupabase(usedBySource, hiddenInitialBySource = emptyHid
     headers: { Prefer: "return=minimal" },
   });
 
-  if (!entries.length) return stateResponse(clean, updatedAt);
+  if (!entries.length) return stateResponse(clean, updatedAt, hidden);
 
   const rows = entries.map((coord, index) => ({ coord, position: index, updated_at: updatedAt }));
   await supabaseRequest(supabaseTableUrl(), {
@@ -421,22 +582,31 @@ function sign(payload) {
   return crypto.createHmac("sha256", ADMIN_CODE).update(payload).digest("base64url");
 }
 
-function createToken() {
-  const payload = Buffer.from(JSON.stringify({ exp: Date.now() + TOKEN_TTL_MS })).toString("base64url");
+function createToken(role = "admin") {
+  const payload = Buffer.from(JSON.stringify({ exp: Date.now() + TOKEN_TTL_MS, role })).toString("base64url");
   return `${payload}.${sign(payload)}`;
 }
 
-function verifyToken(req) {
+function tokenPayload(req) {
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   const [payload, signature] = token.split(".");
-  if (!payload || !signature || sign(payload) !== signature) return false;
+  if (!payload || !signature || sign(payload) !== signature) return null;
   try {
     const parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
-    return Number(parsed.exp) > Date.now();
+    if (Number(parsed.exp) <= Date.now()) return null;
+    return { ...parsed, role: parsed.role === "super" ? "super" : "admin" };
   } catch {
-    return false;
+    return null;
   }
+}
+
+function verifyToken(req) {
+  return Boolean(tokenPayload(req));
+}
+
+function verifySuperToken(req) {
+  return tokenPayload(req)?.role === "super";
 }
 
 async function handleApi(req, res, url) {
@@ -448,7 +618,8 @@ async function handleApi(req, res, url) {
 
   if (req.method === "POST" && url.pathname === "/api/admin/login") {
     const body = await readBody(req);
-    if (body.code === ADMIN_CODE) return json(res, 200, { token: createToken() });
+    if (body.code === SUPER_ADMIN_CODE) return json(res, 200, { token: createToken("super"), role: "super" });
+    if (body.code === ADMIN_CODE) return json(res, 200, { token: createToken("admin"), role: "admin" });
     return json(res, 401, { error: "invalid admin code" });
   }
 
@@ -473,6 +644,49 @@ async function handleApi(req, res, url) {
     return json(res, 200, { active: activeCount(), today: stats.today, total: stats.total });
   }
 
+  if (req.method === "GET" && url.pathname === "/api/history") {
+    if (!verifySuperToken(req)) return json(res, 401, { error: "super admin required" });
+    const limit = Math.max(1, Math.min(500, Number(url.searchParams.get("limit")) || 100));
+    return json(res, 200, { history: await loadHistory(limit, true) });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/history/restore") {
+    if (!verifySuperToken(req)) return json(res, 401, { error: "super admin required" });
+    const body = await readBody(req);
+    const history = await loadHistory(500, true);
+    const entry = history.find((item) => item.id === body.historyId);
+    if (!entry) return json(res, 404, { error: "history not found" });
+    const snapshotName = body.snapshot === "before" ? "beforeState" : "afterState";
+    const snapshot = entry[snapshotName];
+    if (!snapshot?.usedBySource || !snapshot?.hiddenInitialBySource) {
+      return json(res, 400, { error: "history snapshot is not available" });
+    }
+
+    const restoredState = snapshotState(snapshot.usedBySource, snapshot.hiddenInitialBySource);
+    if (body.publish !== true) {
+      return json(res, 200, {
+        preview: true,
+        history: entry,
+        state: stateResponse(restoredState.usedBySource, entry.createdAt, restoredState.hiddenInitialBySource),
+      });
+    }
+
+    const current = await loadState();
+    const beforeState = snapshotState(current.usedBySource, current.hiddenInitialBySource);
+    const saved = await saveState(restoredState.usedBySource, restoredState.hiddenInitialBySource);
+    const afterState = snapshotState(saved.usedBySource, saved.hiddenInitialBySource);
+    const restoreEntry = buildHistoryEntry(beforeState, afterState, {
+      source: entry.source,
+      level: entry.level,
+      action: "restore",
+    });
+    if (restoreEntry) {
+      restoreEntry.summary = `버전 반영: ${entry.summary || "변경 로그"}`;
+      await appendHistory(restoreEntry);
+    }
+    return json(res, 200, { preview: false, history: entry, state: saved });
+  }
+
   if (req.method === "POST" && url.pathname === "/api/used") {
     if (!verifyToken(req)) return json(res, 401, { error: "admin required" });
     const body = await readBody(req);
@@ -481,6 +695,7 @@ async function handleApi(req, res, url) {
     const hiddenInitialBySource = normalizeUsedBySource(state.hiddenInitialBySource);
     const source = normalizeSource(body.source);
     const level = normalizeLevel(body.level);
+    const beforeState = snapshotState(usedBySource, hiddenInitialBySource);
     let used = usedBySource[source][level];
     let hiddenInitial = hiddenInitialBySource[source][level];
     if (body.clear === true) {
@@ -501,7 +716,11 @@ async function handleApi(req, res, url) {
     if (unhide.size) hiddenInitial = hiddenInitial.filter((coord) => !unhide.has(coord));
     usedBySource[source][level] = used;
     hiddenInitialBySource[source][level] = hiddenInitial;
-    return json(res, 200, await saveState(usedBySource, hiddenInitialBySource));
+    const saved = await saveState(usedBySource, hiddenInitialBySource);
+    const afterState = snapshotState(saved.usedBySource, saved.hiddenInitialBySource);
+    const action = body.clear === true ? "clear" : Array.isArray(body.add) && body.add.length ? "add" : Array.isArray(body.remove) && body.remove.length ? "remove" : "update";
+    await appendHistory(buildHistoryEntry(beforeState, afterState, { source, level, action }));
+    return json(res, 200, saved);
   }
 
   return json(res, 404, { error: "not found" });

@@ -31,6 +31,29 @@ for all
 using (false)
 with check (false);
 
+-- 관리자 전용 사용 목록 변경 로그
+create table if not exists public.used_history (
+  id uuid primary key,
+  created_at timestamptz not null default now(),
+  source text not null,
+  level text not null,
+  action text not null,
+  summary text not null default '',
+  payload jsonb not null default '{}'::jsonb
+);
+
+create index if not exists used_history_created_at_idx
+on public.used_history (created_at desc);
+
+alter table public.used_history enable row level security;
+
+drop policy if exists "server service role only" on public.used_history;
+create policy "server service role only"
+on public.used_history
+for all
+using (false)
+with check (false);
+
 -- 원자적 증가 RPC. 서버에서 /rest/v1/rpc/increment_visit 호출
 create or replace function public.increment_visit(target_date date)
 returns integer
