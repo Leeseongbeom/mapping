@@ -79,6 +79,9 @@ const supplyListCount = document.getElementById("supplyListCount");
 const usedListCount = document.getElementById("usedListCount");
 const searchInput = document.getElementById("searchInput");
 const toast = document.getElementById("toast");
+const allianceNotice = document.getElementById("allianceNotice");
+const closeAllianceNoticeButton = document.getElementById("closeAllianceNotice");
+const skipAllianceNoticeCheckbox = document.getElementById("skipAllianceNotice");
 const updatedAtLabel = document.getElementById("updatedAtLabel");
 const sourceLabel = document.getElementById("sourceLabel");
 const sourceTabs = document.getElementById("sourceTabs");
@@ -116,6 +119,7 @@ const RECOMMENDATION_TOGGLE_KEY = "lastwar-show-incendiary-recommendations";
 const TEMP_RANGES_KEY = "lastwar-temp-ranges";
 const CLIENT_ID_KEY = "lastwar-client-id";
 const VISIT_RECORDED_KEY = "lastwar-visit-recorded-date";
+const ALLIANCE_NOTICE_KEY = "lastwar-alliance-notice-date";
 const HEARTBEAT_MS = 30 * 1000;
 const STATS_POLL_MS = 20 * 1000;
 
@@ -445,6 +449,40 @@ function getOrCreateClientId() {
 
 function todayUtcDateString() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function todayKoreaDateString() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "Asia/Seoul",
+  })
+    .formatToParts(new Date())
+    .reduce((result, part) => {
+      result[part.type] = part.value;
+      return result;
+    }, {});
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function showAllianceNoticeIfNeeded() {
+  if (!allianceNotice) return;
+  try {
+    if (localStorage.getItem(ALLIANCE_NOTICE_KEY) === todayKoreaDateString()) return;
+  } catch {}
+  allianceNotice.hidden = false;
+  closeAllianceNoticeButton?.focus();
+}
+
+function closeAllianceNotice() {
+  if (!allianceNotice) return;
+  if (skipAllianceNoticeCheckbox?.checked) {
+    try {
+      localStorage.setItem(ALLIANCE_NOTICE_KEY, todayKoreaDateString());
+    } catch {}
+  }
+  allianceNotice.hidden = true;
 }
 
 async function sendHeartbeat() {
@@ -1710,6 +1748,10 @@ function logoutAdmin(text = "보기 전용 모드") {
 
 document.getElementById("pasteAddButton").addEventListener("click", () => pasteInto(addInput));
 document.getElementById("addButton").addEventListener("click", () => addCoordinates(addInput.value));
+closeAllianceNoticeButton?.addEventListener("click", closeAllianceNotice);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && allianceNotice && !allianceNotice.hidden) closeAllianceNotice();
+});
 document.getElementById("clearButton").addEventListener("click", () => {
   if (!confirm(`${activeLevel}단계 사용한 보급품 목록을 모두 비울까요?`)) return;
   const initialUsed = Array.from(layers.initialUsedBySource[activeSource]?.[activeLevel] || []);
@@ -1975,3 +2017,4 @@ document.addEventListener("visibilitychange", () => {
 });
 
 loadInitialData();
+showAllianceNoticeIfNeeded();
