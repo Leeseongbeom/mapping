@@ -375,12 +375,16 @@ async function loadHistorySupabase(limit = 100, includeSnapshots = false) {
 }
 
 async function loadHistory(limit = 100, includeSnapshots = false) {
+  if (USE_SUPABASE) return await loadHistorySupabase(limit, includeSnapshots);
+  return await loadHistoryLocal(limit, includeSnapshots);
+}
+
+async function tryLoadHistory(limit = 100, includeSnapshots = false) {
   try {
-    if (USE_SUPABASE) return await loadHistorySupabase(limit, includeSnapshots);
-    return await loadHistoryLocal(limit, includeSnapshots);
+    return { history: await loadHistory(limit, includeSnapshots), error: null };
   } catch (error) {
     console.warn("loadHistory failed:", error.message);
-    return [];
+    return { history: [], error: error.message || "history load failed" };
   }
 }
 
@@ -647,7 +651,9 @@ async function handleApi(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/history") {
     if (!verifySuperToken(req)) return json(res, 401, { error: "super admin required" });
     const limit = Math.max(1, Math.min(500, Number(url.searchParams.get("limit")) || 100));
-    return json(res, 200, { history: await loadHistory(limit, true) });
+    const result = await tryLoadHistory(limit, true);
+    if (result.error) return json(res, 500, { error: result.error, history: [] });
+    return json(res, 200, { history: result.history });
   }
 
   if (req.method === "POST" && url.pathname === "/api/history/restore") {

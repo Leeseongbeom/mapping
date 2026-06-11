@@ -596,7 +596,7 @@ function renderHistory(entries = historyEntries) {
   historyCount.textContent = `${historyEntries.length.toLocaleString("ko-KR")}개`;
 
   if (!historyEntries.length) {
-    historyList.innerHTML = `<div class="empty-list">아직 변경 로그가 없습니다.</div>`;
+    historyList.innerHTML = `<div class="empty-list">기능 적용 이후 아직 기록된 변경이 없습니다. 지금부터 사용 추가/취소를 하면 시간별 로그가 쌓입니다.</div>`;
     return;
   }
 
@@ -644,6 +644,9 @@ async function loadHistory() {
     if (error.status === 401 || error.status === 403) {
       logoutAdmin("상위 관리자 코드가 만료되었거나 올바르지 않습니다.");
       return;
+    }
+    if (historyList) {
+      historyList.innerHTML = `<div class="empty-list">변경 로그 저장소를 확인할 수 없습니다. Supabase에서 used_history 테이블이 생성되어 있는지 확인해 주세요.</div>`;
     }
     setMessage(`변경 로그를 불러오지 못했습니다: ${error.message}`);
   }
