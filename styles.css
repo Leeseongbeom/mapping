@@ -603,7 +603,7 @@ canvas {
 .alliance-modal {
   display: grid;
   gap: 14px;
-  width: min(560px, 100%);
+  width: min(720px, 100%);
   max-height: min(760px, calc(100vh - 36px));
   overflow: auto;
   padding: 22px;
@@ -654,7 +654,7 @@ canvas {
 
 .alliance-rule-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -708,6 +708,16 @@ canvas {
 .rule-no span {
   background: rgba(255, 107, 107, 0.2);
   color: #fecaca;
+}
+
+.rule-diplomacy {
+  border-color: rgba(250, 204, 21, 0.4);
+  background: rgba(250, 204, 21, 0.1);
+}
+
+.rule-diplomacy span {
+  background: rgba(250, 204, 21, 0.18);
+  color: #fde68a;
 }
 
 .alliance-modal-note {

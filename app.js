@@ -143,10 +143,12 @@ const I18N = {
     allianceTitle: "보급품 연소탄 사용 주의",
     allianceLead: "보급품 연소탄은 반대 진형에만 사용하세요.",
     possible: "가능",
-    possibleText: "반대 진형 보급품만 연소탄 사용 가능합니다.",
+    possibleText: "외교 제한이 없는 반대 진형 보급품만 연소탄 사용 가능합니다.",
+    diplomacyBan: "외교상 금지",
+    diplomacyText: "적대 서버지만 외교 문제로 보급품 약탈 금지입니다.",
     impossible: "불가능",
     impossibleText: "우리 진형 보급품은 약탈하면 안 됩니다.",
-    allianceNote: "1866은 우리 서버입니다. 같은 진형 보급품을 연소탄 범위에 넣지 마세요.",
+    allianceNote: "1866은 우리 서버입니다. 같은 진형 보급품과 1870 보급품을 연소탄 범위에 넣지 마세요.",
     skipToday: "오늘은 다시 보지 않기",
     confirmRead: "확인했습니다",
     languageBadge: "언어",
@@ -222,10 +224,12 @@ const I18N = {
     allianceTitle: "Supply Incendiary Warning",
     allianceLead: "Use supply incendiaries only against the opposing side.",
     possible: "Allowed",
-    possibleText: "Use incendiaries only on opposing-side supplies.",
+    possibleText: "Use incendiaries only on opposing-side supplies without diplomacy restrictions.",
+    diplomacyBan: "Diplomacy Ban",
+    diplomacyText: "1870 is hostile, but supply raids are banned for diplomacy reasons.",
     impossible: "Not Allowed",
     impossibleText: "Do not raid supplies from our side.",
-    allianceNote: "1866 is our server. Do not include same-side supplies in an incendiary range.",
+    allianceNote: "1866 is our server. Do not include same-side supplies or 1870 supplies in an incendiary range.",
     skipToday: "Do not show again today",
     confirmRead: "Understood",
     languageBadge: "Language",
@@ -303,7 +307,7 @@ const RECOMMENDATION_TOGGLE_KEY = "lastwar-show-incendiary-recommendations";
 const TEMP_RANGES_KEY = "lastwar-temp-ranges";
 const CLIENT_ID_KEY = "lastwar-client-id";
 const VISIT_RECORDED_KEY = "lastwar-visit-recorded-date";
-const ALLIANCE_NOTICE_KEY = "lastwar-alliance-notice-date";
+const ALLIANCE_NOTICE_KEY = "lastwar-alliance-notice-date-v2";
 const HEARTBEAT_MS = 30 * 1000;
 const STATS_POLL_MS = 20 * 1000;
 
@@ -715,9 +719,14 @@ function applyTranslations() {
   setAttr(".alliance-rule-grid", "aria-label", currentLanguage === "ko" ? "연소탄 사용 기준" : "Incendiary usage rules");
   const ruleCards = document.querySelectorAll(".rule-card");
   setText(ruleCards[0]?.querySelector("span"), t("possible"));
+  setText(ruleCards[0]?.querySelector("strong"), "#1865 · #1882 · #1890");
   setText(ruleCards[0]?.querySelector("p"), t("possibleText"));
-  setText(ruleCards[1]?.querySelector("span"), t("impossible"));
-  setText(ruleCards[1]?.querySelector("p"), t("impossibleText"));
+  setText(ruleCards[1]?.querySelector("span"), t("diplomacyBan"));
+  setText(ruleCards[1]?.querySelector("strong"), "#1870");
+  setText(ruleCards[1]?.querySelector("p"), t("diplomacyText"));
+  setText(ruleCards[2]?.querySelector("span"), t("impossible"));
+  setText(ruleCards[2]?.querySelector("strong"), "#1866 · #1884 · #1891 · #1869");
+  setText(ruleCards[2]?.querySelector("p"), t("impossibleText"));
   setText(".alliance-modal .alliance-modal-note", t("allianceNote"));
   setText(".notice-check span", t("skipToday"));
   setText("#closeAllianceNotice", t("confirmRead"));
