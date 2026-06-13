@@ -197,6 +197,16 @@ h1 {
   color: #fff7cc;
 }
 
+.language-toggle {
+  width: auto;
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: var(--radius-xs);
+  font-size: 12px;
+  font-weight: 800;
+  box-shadow: none;
+}
+
 h2 {
   font-size: 13px;
   font-weight: 600;
@@ -723,6 +733,46 @@ canvas {
 
 .alliance-close-button {
   justify-self: stretch;
+}
+
+.language-backdrop {
+  z-index: 50;
+}
+
+.language-modal {
+  display: grid;
+  gap: 14px;
+  width: min(480px, 100%);
+  padding: 22px;
+  border: 1px solid rgba(106, 166, 255, 0.34);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, rgba(22, 31, 51, 0.98) 0%, rgba(13, 20, 34, 0.98) 100%);
+  box-shadow: var(--shadow-lg);
+}
+
+.language-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.language-choice {
+  display: grid;
+  justify-items: start;
+  min-height: 96px;
+  padding: 14px;
+  text-align: left;
+}
+
+.language-choice strong {
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.language-choice span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .control-section {
@@ -1280,6 +1330,10 @@ select {
   }
 
   .alliance-rule-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .language-choice-grid {
     grid-template-columns: 1fr;
   }
 

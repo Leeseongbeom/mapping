@@ -14,6 +14,7 @@
             <div class="title-row">
               <h1>라스트워 좌표 맵</h1>
               <span id="updatedAtLabel" class="updated-at">최신화 -</span>
+              <button id="languageToggle" class="language-toggle" type="button">English</button>
               <a
                 id="sourceLabel"
                 class="source-label"
@@ -192,6 +193,25 @@
         </section>
       </aside>
     </main>
+    <div id="languageModal" class="modal-backdrop language-backdrop" role="dialog" aria-modal="true" aria-labelledby="languageModalTitle" hidden>
+      <section class="language-modal">
+        <div class="alliance-modal-header">
+          <span class="warning-badge">Language</span>
+          <h2 id="languageModalTitle">언어 선택 / Select Language</h2>
+        </div>
+        <p class="alliance-modal-note">처음 사용할 언어를 선택해 주세요. 나중에 상단 버튼으로 다시 바꿀 수 있습니다.</p>
+        <div class="language-choice-grid">
+          <button class="language-choice primary" type="button" data-lang-choice="ko">
+            <strong>한국어</strong>
+            <span>한국어 화면으로 시작합니다.</span>
+          </button>
+          <button class="language-choice" type="button" data-lang-choice="en">
+            <strong>English</strong>
+            <span>Start with the English interface.</span>
+          </button>
+        </div>
+      </section>
+    </div>
     <div id="allianceNotice" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="allianceNoticeTitle" hidden>
       <section class="alliance-modal">
         <div class="alliance-modal-header">

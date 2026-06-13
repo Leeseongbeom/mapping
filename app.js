@@ -25,13 +25,24 @@ const LEVELS = [...new Set(SOURCE_KEYS.flatMap((source) => Object.keys(SUPPLY_SO
 const DEFAULT_LEVEL = "3";
 const BOUNDARIES = [0, 74, 149, 224, 299, 374, 449, 549, 624, 699, 774, 849, 924, 999];
 const BUILDING_NAMES = {
-  1: "마을",
-  2: "도시",
-  3: "공장",
-  4: "열차역",
-  5: "로켓기지",
-  6: "전쟁 궁전",
-  7: "원자력 전기로",
+  ko: {
+    1: "마을",
+    2: "도시",
+    3: "공장",
+    4: "열차역",
+    5: "로켓기지",
+    6: "전쟁 궁전",
+    7: "원자력 전기로",
+  },
+  en: {
+    1: "Village",
+    2: "City",
+    3: "Factory",
+    4: "Train Station",
+    5: "Rocket Base",
+    6: "War Palace",
+    7: "Nuclear Reactor",
+  },
 };
 const BUILDING_GRID = [
   ".1.1.1.1.1.1.",
@@ -59,8 +70,171 @@ const INITIAL_USED = `
 608,203 422,223 431,777 435,780 420,180 833,601 155,292
 `;
 
-const MANUAL_USED_NOTE =
-  "수기 입력 좌표입니다. 보급품 목록 중 가까운 좌표가 잘못 표기된 것으로 보고, 근처 보급품이 사용된 것으로 참고하세요.";
+const MANUAL_USED_NOTE = {
+  ko: "수기 입력 좌표입니다. 보급품 목록 중 가까운 좌표가 잘못 표기된 것으로 보고, 근처 보급품이 사용된 것으로 참고하세요.",
+  en: "Manual coordinate. Treat nearby supply coordinates as likely used because the original manual entry may be slightly off.",
+};
+const LANG_KEY = "lastwar-language";
+const I18N = {
+  ko: {
+    appTitle: "라스트워 좌표 맵",
+    languageToggle: "English",
+    updatedDash: "최신화 -",
+    sourcePrefix: "출처",
+    statsDash: "접속 -",
+    statsTitle: "동시 접속자 / 오늘 방문수 / 누적 방문수",
+    countSummary: ({ supply, used }) => `남은 보급품 ${supply}개 · 사용 ${used}개`,
+    mapTools: "지도 도구",
+    mapView: "지도 보기",
+    showBuildings: "건물 보기",
+    showBuildingsHelp: "마을·도시·공장 같은 건물 위치를 지도에 겹쳐 봅니다.",
+    fitMap: "전체 보기",
+    fitMapHelp: "지도를 0,0부터 999,999까지 한 번에 맞춥니다.",
+    rangeTools: "범위 찍기",
+    incendiary: "연소탄 찍기",
+    incendiaryTitle: "9×9 연소탄 범위를 커서 위치에 미리 표시합니다.",
+    incendiaryHelp: "켜고 지도 클릭 시 9×9 연소탄 범위를 임시 표시합니다.",
+    furnace: "용광로 찍기",
+    furnaceTitle: "5×5 본체와 38×38 연맹 용광로 온도 범위를 중심 기준으로 표시합니다.",
+    furnaceHelp: "켜고 지도 클릭 시 5×5 본체와 38×38 효과 범위를 임시 표시합니다.",
+    clearTemp: "임시 표시 지우기",
+    clearTempHelp: "지도에 찍어둔 연소탄·용광로 임시 범위를 모두 지웁니다.",
+    analysis: "분석",
+    recommendation: "연소탄 추천",
+    recommendationHelp: "남은 보급품 중 2개 이상 같이 먹기 좋은 위치를 보여줍니다.",
+    manage: "관리",
+    clearCurrent: "현재 단계 사용 전체 취소",
+    clearCurrentHelp: "현재 출처·단계의 사용 표시를 모두 미사용으로 되돌립니다.",
+    cautionTitle: "연소탄 주의",
+    coldWarning: "한파때 연소탄 사용 x",
+    baseWarning: "기지나 채집지 연소탄 범위에 넣지 말기",
+    sourceTabsLabel: "좌표 출처",
+    levelTabsLabel: "보급품 단계",
+    level: (level) => `${level}단계`,
+    coordDash: "좌표: -",
+    legendLabel: "지도 색상 설명",
+    blueLegend: "파란색: 남은 보급품",
+    redLegend: "빨간색: 사용한 보급품",
+    purpleLegend: "보라색: 수기 입력 보정",
+    defaultMessage: "파란 핀을 클릭하면 사용, 빨간 핀을 클릭하면 취소됩니다.",
+    sidePanelLabel: "좌표 관리",
+    admin: "관리자",
+    adminCode: "관리자 코드",
+    login: "입력",
+    logout: "나가기",
+    viewerMode: "보기 전용 모드",
+    adminMode: "관리자 모드",
+    superAdminMode: "상위 관리자 모드",
+    bulkAdd: "사용 목록 대량 추가",
+    paste: "붙여넣기",
+    addUsed: "사용 추가",
+    history: "변경 로그",
+    historyHelp: "상위 관리자 전용입니다. 로그 시점을 내 화면에서만 미리 보거나, 선택한 버전을 사용자 화면에 반영할 수 있습니다.",
+    snapshotCurrent: "현재 선택 단계 기록",
+    refreshHistory: "로그 새로고침",
+    exitPreview: "실시간 목록으로 돌아가기",
+    previewNotice: "변경 로그 미리보기 중입니다. 이 상태는 내 화면에만 보입니다.",
+    list: "목록",
+    searchPlaceholder: "좌표 검색: 123,456",
+    remainingList: "남은 보급품 목록",
+    usedList: "사용한 보급품 목록",
+    copy: "복사",
+    important: "중요",
+    allianceTitle: "보급품 연소탄 사용 주의",
+    allianceLead: "보급품 연소탄은 반대 진형에만 사용하세요.",
+    possible: "가능",
+    possibleText: "반대 진형 보급품만 연소탄 사용 가능합니다.",
+    impossible: "불가능",
+    impossibleText: "우리 진형 보급품은 약탈하면 안 됩니다.",
+    allianceNote: "1866은 우리 서버입니다. 같은 진형 보급품을 연소탄 범위에 넣지 마세요.",
+    skipToday: "오늘은 다시 보지 않기",
+    confirmRead: "확인했습니다",
+    languageBadge: "언어",
+    languageTitle: "언어 선택 / Select Language",
+    languageLead: "처음 사용할 언어를 선택해 주세요. 나중에 상단 버튼으로 다시 바꿀 수 있습니다.",
+    koChoiceHelp: "한국어 화면으로 시작합니다.",
+    enChoiceHelp: "영어 화면으로 시작합니다.",
+  },
+  en: {
+    appTitle: "Last War Coordinate Map",
+    languageToggle: "한국어",
+    updatedDash: "Updated -",
+    sourcePrefix: "Source",
+    statsDash: "Online -",
+    statsTitle: "Active users / today's visits / total visits",
+    countSummary: ({ supply, used }) => `Remaining supplies ${supply} · Used ${used}`,
+    mapTools: "Map View",
+    mapView: "View",
+    showBuildings: "Show Buildings",
+    showBuildingsHelp: "Overlay villages, cities, factories, and other building positions on the map.",
+    fitMap: "Fit Map",
+    fitMapHelp: "Fit the full 0,0 to 999,999 map into view.",
+    rangeTools: "Range Pins",
+    incendiary: "Incendiary Pin",
+    incendiaryTitle: "Preview a 9×9 incendiary range at the cursor position.",
+    incendiaryHelp: "When enabled, click the map to place a temporary 9×9 range.",
+    furnace: "Furnace Pin",
+    furnaceTitle: "Show the 5×5 body and 38×38 alliance furnace temperature range from the center.",
+    furnaceHelp: "When enabled, click the map to place a temporary 5×5 body and 38×38 effect range.",
+    clearTemp: "Clear Temporary Pins",
+    clearTempHelp: "Remove every temporary incendiary and furnace range from the map.",
+    analysis: "Analysis",
+    recommendation: "Incendiary Picks",
+    recommendationHelp: "Show remaining supply pairs that can be hit together.",
+    manage: "Manage",
+    clearCurrent: "Clear Current Level Used",
+    clearCurrentHelp: "Return every used marker in the current source and level to unused.",
+    cautionTitle: "Incendiary Caution",
+    coldWarning: "Do not use incendiaries during the cold wave",
+    baseWarning: "Do not include bases or gathering sites in the incendiary range",
+    sourceTabsLabel: "Coordinate source",
+    levelTabsLabel: "Supply level",
+    level: (level) => `Level ${level}`,
+    coordDash: "Coord: -",
+    legendLabel: "Map color legend",
+    blueLegend: "Blue: remaining supply",
+    redLegend: "Red: used supply",
+    purpleLegend: "Purple: manual correction",
+    defaultMessage: "Click a blue pin to mark used. Click a red pin to undo.",
+    sidePanelLabel: "Coordinate management",
+    admin: "Admin",
+    adminCode: "Admin code",
+    login: "Enter",
+    logout: "Exit",
+    viewerMode: "View-only mode",
+    adminMode: "Admin mode",
+    superAdminMode: "Super admin mode",
+    bulkAdd: "Bulk Add Used Coordinates",
+    paste: "Paste",
+    addUsed: "Add Used",
+    history: "Change Log",
+    historyHelp: "Super admin only. Preview log versions locally or publish a selected version to users.",
+    snapshotCurrent: "Record Current Level",
+    refreshHistory: "Refresh Log",
+    exitPreview: "Return to Live List",
+    previewNotice: "Previewing a change log version. This is visible only on your screen.",
+    list: "Lists",
+    searchPlaceholder: "Search coordinate: 123,456",
+    remainingList: "Remaining Supplies",
+    usedList: "Used Supplies",
+    copy: "Copy",
+    important: "Important",
+    allianceTitle: "Supply Incendiary Warning",
+    allianceLead: "Use supply incendiaries only against the opposing side.",
+    possible: "Allowed",
+    possibleText: "Use incendiaries only on opposing-side supplies.",
+    impossible: "Not Allowed",
+    impossibleText: "Do not raid supplies from our side.",
+    allianceNote: "1866 is our server. Do not include same-side supplies in an incendiary range.",
+    skipToday: "Do not show again today",
+    confirmRead: "Understood",
+    languageBadge: "Language",
+    languageTitle: "Select Language / 언어 선택",
+    languageLead: "Choose the language for this map. You can change it later from the top button.",
+    koChoiceHelp: "Start with the Korean interface.",
+    enChoiceHelp: "Start with the English interface.",
+  },
+};
 
 const canvas = document.getElementById("mapCanvas");
 const ctx = canvas.getContext("2d", { alpha: false });
@@ -79,6 +253,8 @@ const supplyListCount = document.getElementById("supplyListCount");
 const usedListCount = document.getElementById("usedListCount");
 const searchInput = document.getElementById("searchInput");
 const toast = document.getElementById("toast");
+const languageModal = document.getElementById("languageModal");
+const languageToggle = document.getElementById("languageToggle");
 const allianceNotice = document.getElementById("allianceNotice");
 const closeAllianceNoticeButton = document.getElementById("closeAllianceNotice");
 const skipAllianceNoticeCheckbox = document.getElementById("skipAllianceNotice");
@@ -136,6 +312,7 @@ let isDragging = false;
 let dragStart = null;
 let touchGesture = null;
 let lastTouchAt = 0;
+let currentLanguage = localStorage.getItem(LANG_KEY) === "en" ? "en" : "ko";
 let adminToken = sessionStorage.getItem(ADMIN_TOKEN_KEY) || "";
 let adminRole = sessionStorage.getItem(ADMIN_ROLE_KEY) || decodeAdminRole(adminToken);
 let isAdmin = Boolean(adminToken);
@@ -161,6 +338,24 @@ let isHistoryPreview = false;
 
 function keyOf(x, y) {
   return `${x},${y}`;
+}
+
+function t(key, params) {
+  const value = I18N[currentLanguage]?.[key] ?? I18N.ko[key] ?? key;
+  return typeof value === "function" ? value(params || {}) : value;
+}
+
+function manualUsedNote() {
+  return MANUAL_USED_NOTE[currentLanguage] || MANUAL_USED_NOTE.ko;
+}
+
+function countText(value) {
+  const formatted = Number(value || 0).toLocaleString(currentLanguage === "ko" ? "ko-KR" : "en-US");
+  return currentLanguage === "ko" ? `${formatted}개` : formatted;
+}
+
+function coordinateLabel(x, y, tags = []) {
+  return `${currentLanguage === "ko" ? "좌표" : "Coord"}: ${x},${y}${tags.length ? ` · ${tags.join("/")}` : ""}`;
 }
 
 function decodeAdminRole(token) {
@@ -218,7 +413,11 @@ function addTempRange(type, point) {
   tempRanges.push(item);
   saveTempRanges();
   draw();
-  setMessage(`${type === "furnace" ? "용광로" : "연소탄"} 임시 위치 ${point.x},${point.y}를 표시했습니다.`);
+  setMessage(
+    currentLanguage === "ko"
+      ? `${type === "furnace" ? "용광로" : "연소탄"} 임시 위치 ${point.x},${point.y}를 표시했습니다.`
+      : `Placed temporary ${type === "furnace" ? "furnace" : "incendiary"} range at ${point.x},${point.y}.`,
+  );
 }
 
 function normalizeLevel(value) {
@@ -336,17 +535,17 @@ async function loadInitialData() {
   }
   syncActiveLayers();
 
-  setAdminMode(isAdmin, isAdmin ? "관리자 모드" : "보기 전용 모드");
+  setAdminMode(isAdmin, isAdmin ? t("adminMode") : t("viewerMode"));
   renderSourceTabs();
   renderLevelTabs();
 
   try {
     const data = await apiFetch("/api/state");
     applyState(data);
-    refresh("서버의 사용 목록을 불러왔습니다.");
+    refresh(currentLanguage === "ko" ? "서버의 사용 목록을 불러왔습니다." : "Loaded the used list from the server.");
     return;
   } catch {
-    setMessage("서버 연결이 없어 임시 로컬 데이터로 표시합니다.");
+    setMessage(currentLanguage === "ko" ? "서버 연결이 없어 임시 로컬 데이터로 표시합니다." : "Server is unavailable. Showing temporary local data.");
   }
 
   const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
@@ -364,7 +563,7 @@ async function loadInitialData() {
       }
       syncActiveLayers();
       latestUpdatedAt = parsed.updatedAt || "";
-      refresh("저장된 좌표를 불러왔습니다.");
+      refresh(currentLanguage === "ko" ? "저장된 좌표를 불러왔습니다." : "Loaded saved coordinates.");
       return;
     } catch {
       localStorage.removeItem(STORAGE_KEY);
@@ -373,7 +572,7 @@ async function loadInitialData() {
   for (const [x, y] of parseCoordinates(INITIAL_USED).parsed) layers.savedUsedBySource[DEFAULT_SOURCE][DEFAULT_LEVEL].add(keyOf(x, y));
   syncActiveLayers();
   latestUpdatedAt = new Date().toISOString();
-  refresh("사진 좌표를 불러왔습니다. 파란 보급품 핀을 클릭하면 사용 목록으로 이동합니다.");
+  refresh(currentLanguage === "ko" ? "사진 좌표를 불러왔습니다. 파란 보급품 핀을 클릭하면 사용 목록으로 이동합니다." : "Loaded photo coordinates. Click a blue supply pin to move it to the used list.");
 }
 
 async function apiFetch(path, options = {}) {
@@ -401,20 +600,141 @@ function setAdminMode(nextIsAdmin, text) {
   if (!isSuperAdmin) {
     historyEntries = [];
     if (historyList) historyList.innerHTML = "";
-    if (historyCount) historyCount.textContent = "0개";
+    if (historyCount) historyCount.textContent = countText(0);
     clearHistoryPreview(false);
   }
   recommendationSection.hidden = !showRecommendations;
-  adminState.textContent = text || (isSuperAdmin ? "상위 관리자 모드" : isAdmin ? "관리자 모드" : "보기 전용 모드");
+  adminState.textContent = text || (isSuperAdmin ? t("superAdminMode") : isAdmin ? t("adminMode") : t("viewerMode"));
   if (isAdmin) startStatsPolling();
   else stopStatsPolling();
   if (isSuperAdmin) loadHistory();
+}
+
+function setText(selector, value) {
+  const element = typeof selector === "string" ? document.querySelector(selector) : selector;
+  if (element) element.textContent = value;
+}
+
+function setAttr(selector, name, value) {
+  const element = typeof selector === "string" ? document.querySelector(selector) : selector;
+  if (element) element.setAttribute(name, value);
+}
+
+function setDotLabel(element, dotClass, label) {
+  if (!element) return;
+  element.innerHTML = `<b class="dot ${dotClass}"></b>${escapeHtml(label)}`;
+}
+
+function updateCountSummary() {
+  const summary = document.querySelector(".map-toolbar p");
+  if (!summary) return;
+  const supply = getRemainingSupply().size.toLocaleString(currentLanguage === "ko" ? "ko-KR" : "en-US");
+  const used = layers.used.size.toLocaleString(currentLanguage === "ko" ? "ko-KR" : "en-US");
+  summary.innerHTML =
+    currentLanguage === "ko"
+      ? `남은 보급품 <span id="supplyCount">${supply}</span>개 · 사용 <span id="usedCount">${used}</span>개`
+      : `Remaining supplies <span id="supplyCount">${supply}</span> · Used <span id="usedCount">${used}</span>`;
+}
+
+function applyTranslations() {
+  document.documentElement.lang = currentLanguage;
+  document.title = t("appTitle");
+  setText("h1", t("appTitle"));
+  setText(languageToggle, t("languageToggle"));
+  setText(updatedAtLabel, formatUpdatedAt(latestUpdatedAt));
+  setText(sourceLabel, `${t("sourcePrefix")} ${historySourceLabel(activeSource)}`);
+  setText(statsLabel, t("statsDash"));
+  setAttr(statsLabel, "title", t("statsTitle"));
+  updateCountSummary();
+  setAttr(".toolbar-actions", "aria-label", t("mapTools"));
+  const groups = document.querySelectorAll(".tool-group-title");
+  [t("mapView"), t("rangeTools"), t("analysis"), t("manage")].forEach((label, index) => setText(groups[index], label));
+  setText(buildingToggle, t("showBuildings"));
+  setText(buildingToggle.closest(".tool-control")?.querySelector("small"), t("showBuildingsHelp"));
+  setText("#fitButton", t("fitMap"));
+  setText(document.getElementById("fitButton")?.closest(".tool-control")?.querySelector("small"), t("fitMapHelp"));
+  setText(incendiaryToggle, t("incendiary"));
+  setAttr(incendiaryToggle, "title", t("incendiaryTitle"));
+  setText(incendiaryToggle.closest(".tool-control")?.querySelector("small"), t("incendiaryHelp"));
+  setText(furnaceToggle, t("furnace"));
+  setAttr(furnaceToggle, "title", t("furnaceTitle"));
+  setText(furnaceToggle.closest(".tool-control")?.querySelector("small"), t("furnaceHelp"));
+  setText(clearTempButton, t("clearTemp"));
+  setText(clearTempButton.closest(".tool-control")?.querySelector("small"), t("clearTempHelp"));
+  setText(recommendationToggle, t("recommendation"));
+  setText(recommendationToggle.closest(".tool-control")?.querySelector("small"), t("recommendationHelp"));
+  setText("#clearButton", t("clearCurrent"));
+  setText(document.getElementById("clearButton")?.closest(".tool-control")?.querySelector("small"), t("clearCurrentHelp"));
+  setText(".notice-box strong", t("cautionTitle"));
+  const noticeItems = document.querySelectorAll(".notice-box span");
+  setText(noticeItems[0], t("coldWarning"));
+  setText(noticeItems[1], t("baseWarning"));
+  setAttr(".notice-box", "aria-label", t("cautionTitle"));
+  setAttr(sourceTabs, "aria-label", t("sourceTabsLabel"));
+  setAttr(levelTabs, "aria-label", t("levelTabsLabel"));
+  setText(hoverCoord, t("coordDash"));
+  setAttr(".legend", "aria-label", t("legendLabel"));
+  const legendItems = document.querySelectorAll(".legend span");
+  setDotLabel(legendItems[0], "supply-dot", t("blueLegend"));
+  setDotLabel(legendItems[1], "used-dot", t("redLegend"));
+  setDotLabel(legendItems[2], "manual-dot", t("purpleLegend"));
+  if (message.textContent === I18N.ko.defaultMessage || message.textContent === I18N.en.defaultMessage) setText(message, t("defaultMessage"));
+  setAttr(".side-panel", "aria-label", t("sidePanelLabel"));
+  setText(".admin-login-section h2", t("admin"));
+  setAttr(adminCodeInput, "placeholder", t("adminCode"));
+  setText(adminLoginButton, t("login"));
+  setText(adminLogoutButton, t("logout"));
+  if (!isAdmin) setText(adminState, t("viewerMode"));
+  else setText(adminState, isSuperAdmin ? t("superAdminMode") : t("adminMode"));
+  setText("#bulkAddSection h2", t("bulkAdd"));
+  setText("#pasteAddButton", t("paste"));
+  setText("#addButton", t("addUsed"));
+  setText("#historySection h2", t("history"));
+  setText(".history-section .section-help", t("historyHelp"));
+  setText(createHistorySnapshotButton, t("snapshotCurrent"));
+  setText(refreshHistoryButton, t("refreshHistory"));
+  setText(exitHistoryPreviewButton, t("exitPreview"));
+  setText(historyPreviewNotice, t("previewNotice"));
+  setText("#recommendationSection h2", t("recommendation"));
+  setText(".compact h2", t("list"));
+  setAttr(searchInput, "placeholder", t("searchPlaceholder"));
+  const listHeaders = document.querySelectorAll(".list-header > span:first-child");
+  setDotLabel(listHeaders[0], "supply-dot", t("remainingList"));
+  setDotLabel(listHeaders[1], "used-dot", t("usedList"));
+  setText("#copySupplyButton", t("copy"));
+  setText("#copyUsedButton", t("copy"));
+  setText(".alliance-modal .warning-badge", t("important"));
+  setText("#allianceNoticeTitle", t("allianceTitle"));
+  const leadStrong = document.querySelector(".alliance-modal-lead strong");
+  if (leadStrong) {
+    document.querySelector(".alliance-modal-lead").innerHTML =
+      currentLanguage === "ko"
+        ? `보급품 연소탄은 <strong>반대 진형</strong>에만 사용하세요.`
+        : `Use supply incendiaries only against the <strong>opposing side</strong>.`;
+  }
+  setAttr(".alliance-rule-grid", "aria-label", currentLanguage === "ko" ? "연소탄 사용 기준" : "Incendiary usage rules");
+  const ruleCards = document.querySelectorAll(".rule-card");
+  setText(ruleCards[0]?.querySelector("span"), t("possible"));
+  setText(ruleCards[0]?.querySelector("p"), t("possibleText"));
+  setText(ruleCards[1]?.querySelector("span"), t("impossible"));
+  setText(ruleCards[1]?.querySelector("p"), t("impossibleText"));
+  setText(".alliance-modal .alliance-modal-note", t("allianceNote"));
+  setText(".notice-check span", t("skipToday"));
+  setText("#closeAllianceNotice", t("confirmRead"));
+  setText(".language-modal .warning-badge", t("languageBadge"));
+  setText("#languageModalTitle", t("languageTitle"));
+  setText(".language-modal .alliance-modal-note", t("languageLead"));
+  setText('.language-choice[data-lang-choice="ko"] span', t("koChoiceHelp"));
+  setText('.language-choice[data-lang-choice="en"] span', t("enChoiceHelp"));
+  renderLevelTabs();
+  renderSourceTabs();
 }
 
 function renderLevelTabs() {
   for (const button of levelTabs.querySelectorAll("button[data-level]")) {
     const selected = button.dataset.level === activeLevel;
     const available = sourceHasLevel(activeSource, button.dataset.level);
+    button.textContent = t("level", button.dataset.level);
     button.classList.toggle("is-active", selected);
     button.setAttribute("aria-selected", String(selected));
     button.disabled = !available;
@@ -422,12 +742,13 @@ function renderLevelTabs() {
   }
   sourceLabel.hidden = false;
   sourceLabel.href = SUPPLY_SOURCES[activeSource].sourceUrl;
-  sourceLabel.textContent = `출처 ${SUPPLY_SOURCES[activeSource].label}`;
+  sourceLabel.textContent = `${t("sourcePrefix")} ${historySourceLabel(activeSource)}`;
 }
 
 function renderSourceTabs() {
   for (const button of sourceTabs.querySelectorAll("button[data-source]")) {
     const selected = button.dataset.source === activeSource;
+    button.textContent = historySourceLabel(button.dataset.source);
     button.classList.toggle("is-active", selected);
     button.setAttribute("aria-selected", String(selected));
   }
@@ -445,7 +766,7 @@ function setActiveLevel(level) {
   }
   activeRecommendationId = "";
   renderLevelTabs();
-  refresh(`${activeLevel}단계 보급품을 표시합니다.`);
+  refresh(currentLanguage === "ko" ? `${activeLevel}단계 보급품을 표시합니다.` : `Showing Level ${activeLevel} supplies.`);
 }
 
 function setActiveSource(source) {
@@ -462,7 +783,7 @@ function setActiveSource(source) {
   activeRecommendationId = "";
   renderSourceTabs();
   renderLevelTabs();
-  refresh(`${SUPPLY_SOURCES[activeSource].label} 출처로 전환했습니다.`);
+  refresh(currentLanguage === "ko" ? `${historySourceLabel(activeSource)} 출처로 전환했습니다.` : `Switched to ${historySourceLabel(activeSource)} source.`);
 }
 
 function getOrCreateClientId() {
@@ -499,7 +820,30 @@ function todayKoreaDateString() {
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
+function setLanguage(language, options = {}) {
+  currentLanguage = language === "en" ? "en" : "ko";
+  localStorage.setItem(LANG_KEY, currentLanguage);
+  applyTranslations();
+  renderList();
+  renderRecommendations();
+  renderHistory(historyEntries);
+  if (isAdmin) refreshStats();
+  draw();
+  if (options.closeModal && languageModal) languageModal.hidden = true;
+  if (options.showAlliance) showAllianceNoticeIfNeeded();
+}
+
+function showLanguageModalIfNeeded() {
+  if (!languageModal) return false;
+  if (localStorage.getItem(LANG_KEY)) return false;
+  applyTranslations();
+  languageModal.hidden = false;
+  languageModal.querySelector("button[data-lang-choice]")?.focus();
+  return true;
+}
+
 function showAllianceNoticeIfNeeded() {
+  if (languageModal && !languageModal.hidden) return;
   if (!allianceNotice) return;
   try {
     if (localStorage.getItem(ALLIANCE_NOTICE_KEY) === todayKoreaDateString()) return;
@@ -556,7 +900,10 @@ async function refreshStats() {
   try {
     const data = await apiFetch("/api/stats");
     if (!statsLabel) return;
-    statsLabel.textContent = `접속 ${Number(data.active) || 0} · 오늘 ${Number(data.today) || 0} · 누적 ${Number(data.total) || 0}`;
+    statsLabel.textContent =
+      currentLanguage === "ko"
+        ? `접속 ${Number(data.active) || 0} · 오늘 ${Number(data.today) || 0} · 누적 ${Number(data.total) || 0}`
+        : `Online ${Number(data.active) || 0} · Today ${Number(data.today) || 0} · Total ${Number(data.total) || 0}`;
   } catch (error) {
     if (error.status === 401 || error.status === 403) stopStatsPolling();
   }
@@ -572,11 +919,18 @@ function escapeHtml(value) {
 
 function formatHistoryTime(value) {
   const label = formatUpdatedAt(value);
-  return label === "최신화 -" ? "-" : label.replace("최신화 ", "");
+  if (label === t("updatedDash")) return "-";
+  return label.replace(/^최신화\s+/, "").replace(/^Updated\s+/, "");
 }
 
 function historySourceLabel(source) {
-  return SUPPLY_SOURCES[normalizeSource(source)]?.label || source;
+  const normalizedSource = normalizeSource(source);
+  if (normalizedSource === "geumgo" && currentLanguage === "en") return "Geumgo";
+  return SUPPLY_SOURCES[normalizedSource]?.label || source;
+}
+
+function buildingName(type) {
+  return BUILDING_NAMES[currentLanguage]?.[type] || BUILDING_NAMES.ko[type] || String(type);
 }
 
 function historyCoordButtons(coords, className, label, max = 10) {
@@ -587,17 +941,38 @@ function historyCoordButtons(coords, className, label, max = 10) {
         `<button class="history-coord ${className}" type="button" data-action="history-jump" data-coord="${coord}" title="${label}">${coord}</button>`,
     )
     .join("");
-  const hidden = coords.length > visible.length ? `<span class="history-meta">+${coords.length - visible.length}개</span>` : "";
+  const hidden = coords.length > visible.length ? `<span class="history-meta">+${countText(coords.length - visible.length)}</span>` : "";
   return buttons + hidden;
+}
+
+function historySummary(entry) {
+  if (currentLanguage === "ko") return entry.summary || "변경 사항";
+  if (entry.action === "snapshot") {
+    return `Start snapshot: ${historySourceLabel(entry.source)} Level ${entry.level}, used ${entry.totalsAfter?.used ?? 0}, hidden ${entry.totalsAfter?.hiddenInitial ?? 0}`;
+  }
+  const parts = [];
+  const usedAdded = entry.diff?.used?.added?.length || 0;
+  const usedRemoved = entry.diff?.used?.removed?.length || 0;
+  const hiddenAdded = entry.diff?.hiddenInitial?.added?.length || 0;
+  const hiddenRemoved = entry.diff?.hiddenInitial?.removed?.length || 0;
+  if (usedAdded) parts.push(`used added ${usedAdded}`);
+  if (usedRemoved) parts.push(`used removed ${usedRemoved}`);
+  if (hiddenAdded) parts.push(`initial used hidden ${hiddenAdded}`);
+  if (hiddenRemoved) parts.push(`initial used restored ${hiddenRemoved}`);
+  return parts.length ? parts.join(", ") : "Change";
 }
 
 function renderHistory(entries = historyEntries) {
   if (!historyList || !historyCount) return;
   historyEntries = Array.isArray(entries) ? entries : [];
-  historyCount.textContent = `${historyEntries.length.toLocaleString("ko-KR")}개`;
+  historyCount.textContent = countText(historyEntries.length);
 
   if (!historyEntries.length) {
-    historyList.innerHTML = `<div class="empty-list">기능 적용 이후 아직 기록된 변경이 없습니다. 지금부터 사용 추가/취소를 하면 시간별 로그가 쌓입니다.</div>`;
+    historyList.innerHTML = `<div class="empty-list">${
+      currentLanguage === "ko"
+        ? "기능 적용 이후 아직 기록된 변경이 없습니다. 지금부터 사용 추가/취소를 하면 시간별 로그가 쌓입니다."
+        : "No changes have been recorded since this feature was added. New add/undo actions will appear here."
+    }</div>`;
     return;
   }
 
@@ -610,8 +985,8 @@ function renderHistory(entries = historyEntries) {
       const addedCoords = [...usedAdded, ...hiddenRemoved];
       const removedCoords = [...usedRemoved, ...hiddenAdded];
       const coordsHtml = [
-        addedCoords.length ? historyCoordButtons(addedCoords, "added", "사용으로 바뀐 좌표") : "",
-        removedCoords.length ? historyCoordButtons(removedCoords, "removed", "미사용으로 바뀐 좌표") : "",
+        addedCoords.length ? historyCoordButtons(addedCoords, "added", currentLanguage === "ko" ? "사용으로 바뀐 좌표" : "Coordinates changed to used") : "",
+        removedCoords.length ? historyCoordButtons(removedCoords, "removed", currentLanguage === "ko" ? "미사용으로 바뀐 좌표" : "Coordinates changed to unused") : "",
       ]
         .filter(Boolean)
         .join("");
@@ -619,15 +994,15 @@ function renderHistory(entries = historyEntries) {
       return `
         <article class="history-row" data-history-id="${entry.id}">
           <div class="history-row-header">
-            <span class="history-meta">${formatHistoryTime(entry.createdAt)} · ${historySourceLabel(entry.source)} ${entry.level}단계</span>
+            <span class="history-meta">${formatHistoryTime(entry.createdAt)} · ${historySourceLabel(entry.source)} ${t("level", entry.level)}</span>
             <span class="history-meta">${entry.action || "update"}</span>
           </div>
-          <div class="history-summary">${escapeHtml(entry.summary || "변경 사항")}</div>
+          <div class="history-summary">${escapeHtml(historySummary(entry))}</div>
           ${coordsHtml ? `<div class="history-coords">${coordsHtml}</div>` : ""}
           <div class="history-row-actions">
-            <button class="row-action" type="button" data-action="history-preview" data-id="${entry.id}" data-snapshot="before">변경 전 보기</button>
-            <button class="row-action" type="button" data-action="history-preview" data-id="${entry.id}" data-snapshot="after">변경 후 보기</button>
-            <button class="row-action history-publish-button" type="button" data-action="history-publish" data-id="${entry.id}">이 버전을 사용자 화면에 반영</button>
+            <button class="row-action" type="button" data-action="history-preview" data-id="${entry.id}" data-snapshot="before">${currentLanguage === "ko" ? "변경 전 보기" : "Preview Before"}</button>
+            <button class="row-action" type="button" data-action="history-preview" data-id="${entry.id}" data-snapshot="after">${currentLanguage === "ko" ? "변경 후 보기" : "Preview After"}</button>
+            <button class="row-action history-publish-button" type="button" data-action="history-publish" data-id="${entry.id}">${currentLanguage === "ko" ? "이 버전을 사용자 화면에 반영" : "Publish This Version"}</button>
           </div>
         </article>
       `;
@@ -647,16 +1022,20 @@ async function loadHistory() {
       return;
     }
     if (historyList) {
-      historyList.innerHTML = `<div class="empty-list">변경 로그 저장소를 확인할 수 없습니다. Supabase에서 used_history 테이블이 생성되어 있는지 확인해 주세요.</div>`;
+      historyList.innerHTML = `<div class="empty-list">${
+        currentLanguage === "ko"
+          ? "변경 로그 저장소를 확인할 수 없습니다. Supabase에서 used_history 테이블이 생성되어 있는지 확인해 주세요."
+          : "The change-log store is unavailable. Check that the used_history table exists in Supabase."
+      }</div>`;
     }
-    setMessage(`변경 로그를 불러오지 못했습니다: ${error.message}`);
+    setMessage(currentLanguage === "ko" ? `변경 로그를 불러오지 못했습니다: ${error.message}` : `Could not load change log: ${error.message}`);
   }
 }
 
 async function createHistorySnapshot() {
   if (!isSuperAdmin) return;
-  const label = `${historySourceLabel(activeSource)} ${activeLevel}단계`;
-  if (!confirm(`현재 선택한 ${label} 사용 상태만 변경 로그의 기준점으로 기록할까요?`)) return;
+  const label = `${historySourceLabel(activeSource)} ${t("level", activeLevel)}`;
+  if (!confirm(currentLanguage === "ko" ? `현재 선택한 ${label} 사용 상태만 변경 로그의 기준점으로 기록할까요?` : `Record only the selected ${label} used state as a change-log baseline?`)) return;
   try {
     const data = await apiFetch("/api/history/snapshot", {
       method: "POST",
@@ -668,12 +1047,16 @@ async function createHistorySnapshot() {
     } else {
       await loadHistory();
     }
-    setMessage(`${label} 현재 상태를 변경 로그에 기록했습니다.`);
-    showToast(`${label} 상태를 기록했습니다.`);
+    setMessage(currentLanguage === "ko" ? `${label} 현재 상태를 변경 로그에 기록했습니다.` : `Recorded the current ${label} state in the change log.`);
+    showToast(currentLanguage === "ko" ? `${label} 상태를 기록했습니다.` : `Recorded ${label}.`);
   } catch (error) {
-    setMessage(`현재 상태 기록 실패: ${error.message}`);
+    setMessage(currentLanguage === "ko" ? `현재 상태 기록 실패: ${error.message}` : `Could not record current state: ${error.message}`);
     if (historyList) {
-      historyList.innerHTML = `<div class="empty-list">현재 상태를 기록하지 못했습니다. Supabase에서 used_history 테이블이 생성되어 있는지 확인해 주세요.</div>`;
+      historyList.innerHTML = `<div class="empty-list">${
+        currentLanguage === "ko"
+          ? "현재 상태를 기록하지 못했습니다. Supabase에서 used_history 테이블이 생성되어 있는지 확인해 주세요."
+          : "Could not record the current state. Check that the used_history table exists in Supabase."
+      }</div>`;
     }
   }
 }
@@ -696,15 +1079,19 @@ async function previewHistoryVersion(id, snapshot) {
     isHistoryPreview = true;
     if (historyPreviewNotice) historyPreviewNotice.hidden = false;
     if (exitHistoryPreviewButton) exitHistoryPreviewButton.hidden = false;
-    refresh(`${snapshot === "before" ? "변경 전" : "변경 후"} 버전을 내 화면에서만 미리봅니다.`);
+    refresh(
+      currentLanguage === "ko"
+        ? `${snapshot === "before" ? "변경 전" : "변경 후"} 버전을 내 화면에서만 미리봅니다.`
+        : `Previewing the ${snapshot === "before" ? "before" : "after"} version on your screen only.`,
+    );
   } catch (error) {
-    setMessage(`버전 미리보기 실패: ${error.message}`);
+    setMessage(currentLanguage === "ko" ? `버전 미리보기 실패: ${error.message}` : `Version preview failed: ${error.message}`);
   }
 }
 
 async function publishHistoryVersion(id) {
   if (!isSuperAdmin) return;
-  if (!confirm("이 변경 로그의 '변경 후' 버전을 실제 사용자 화면에 반영할까요?")) return;
+  if (!confirm(currentLanguage === "ko" ? "이 변경 로그의 '변경 후' 버전을 실제 사용자 화면에 반영할까요?" : "Publish this log entry's 'after' version to the live user view?")) return;
   try {
     const data = await apiFetch("/api/history/restore", {
       method: "POST",
@@ -714,11 +1101,11 @@ async function publishHistoryVersion(id) {
     isHistoryPreview = false;
     if (historyPreviewNotice) historyPreviewNotice.hidden = true;
     if (exitHistoryPreviewButton) exitHistoryPreviewButton.hidden = true;
-    refresh("선택한 버전을 사용자 화면에 반영했습니다.");
-    showToast("사용자 화면에 반영되었습니다.");
+    refresh(currentLanguage === "ko" ? "선택한 버전을 사용자 화면에 반영했습니다." : "Published the selected version to users.");
+    showToast(currentLanguage === "ko" ? "사용자 화면에 반영되었습니다." : "Published to users.");
     loadHistory();
   } catch (error) {
-    setMessage(`버전 반영 실패: ${error.message}`);
+    setMessage(currentLanguage === "ko" ? `버전 반영 실패: ${error.message}` : `Publish failed: ${error.message}`);
   }
 }
 
@@ -735,9 +1122,9 @@ async function clearHistoryPreview(reloadLive = true) {
   try {
     const data = await apiFetch("/api/state");
     applyState(data);
-    refresh("실시간 사용자 화면 기준 목록으로 돌아왔습니다.");
+    refresh(currentLanguage === "ko" ? "실시간 사용자 화면 기준 목록으로 돌아왔습니다." : "Returned to the live user list.");
   } catch (error) {
-    setMessage(`실시간 목록 복귀 실패: ${error.message}`);
+    setMessage(currentLanguage === "ko" ? `실시간 목록 복귀 실패: ${error.message}` : `Could not return to live list: ${error.message}`);
   }
 }
 
@@ -752,17 +1139,17 @@ function stopStatsPolling() {
     clearInterval(statsTimer);
     statsTimer = null;
   }
-  if (statsLabel) statsLabel.textContent = "접속 -";
+  if (statsLabel) statsLabel.textContent = t("statsDash");
 }
 
 async function pasteInto(textarea) {
   try {
     textarea.value = await navigator.clipboard.readText();
     textarea.focus();
-    setMessage("클립보드 내용을 붙여넣었습니다.");
+    setMessage(currentLanguage === "ko" ? "클립보드 내용을 붙여넣었습니다." : "Pasted clipboard contents.");
   } catch {
     textarea.focus();
-    setMessage("브라우저 권한 때문에 자동 붙여넣기가 막혔습니다. Cmd+V로 붙여넣어 주세요.");
+    setMessage(currentLanguage === "ko" ? "브라우저 권한 때문에 자동 붙여넣기가 막혔습니다. Cmd+V로 붙여넣어 주세요." : "Auto-paste was blocked by browser permissions. Use Cmd+V to paste.");
   }
 }
 
@@ -774,15 +1161,19 @@ async function addCoordinates(text) {
   const before = layers.used.size;
   const ok = await mutateUsed(
     { add },
-    `사용 위치 추가 요청 ${add.length}개${manualCount ? `, 수기 보정 ${manualCount}개` : ""}${invalid.length ? `, 오류 ${invalid.length}개` : ""}`,
+    currentLanguage === "ko"
+      ? `사용 위치 추가 요청 ${add.length}개${manualCount ? `, 수기 보정 ${manualCount}개` : ""}${invalid.length ? `, 오류 ${invalid.length}개` : ""}`
+      : `Adding ${add.length} used coordinates${manualCount ? `, manual corrections ${manualCount}` : ""}${invalid.length ? `, invalid ${invalid.length}` : ""}`,
   );
   if (!ok) return;
   const added = layers.used.size - before;
   if (add[0]) startCoordinatePulse(add[0], markerColorForCoordinate(add[0]));
   setMessage(
-    `반영되었습니다. 추가 ${added}개, 중복 ${add.length - added}개${manualCount ? `, 수기 보정 ${manualCount}개` : ""}${invalid.length ? `, 오류 ${invalid.length}개` : ""}`,
+    currentLanguage === "ko"
+      ? `반영되었습니다. 추가 ${added}개, 중복 ${add.length - added}개${manualCount ? `, 수기 보정 ${manualCount}개` : ""}${invalid.length ? `, 오류 ${invalid.length}개` : ""}`
+      : `Applied. Added ${added}, duplicates ${add.length - added}${manualCount ? `, manual corrections ${manualCount}` : ""}${invalid.length ? `, invalid ${invalid.length}` : ""}`,
   );
-  window.alert("반영되었습니다.\n표시까지 시간이 조금 걸릴 수 있습니다.");
+  window.alert(currentLanguage === "ko" ? "반영되었습니다.\n표시까지 시간이 조금 걸릴 수 있습니다." : "Applied.\nIt may take a moment to appear.");
 }
 
 function deleteCoordinates(text) {
@@ -791,17 +1182,22 @@ function deleteCoordinates(text) {
   for (const [x, y] of parsed) {
     if (layers.used.delete(keyOf(x, y))) removed += 1;
   }
-  refresh(`사용 취소 ${removed}개, 미존재 ${parsed.length - removed}개${invalid.length ? `, 오류 ${invalid.length}개` : ""}`);
+  refresh(
+    currentLanguage === "ko"
+      ? `사용 취소 ${removed}개, 미존재 ${parsed.length - removed}개${invalid.length ? `, 오류 ${invalid.length}개` : ""}`
+      : `Removed ${removed}, not found ${parsed.length - removed}${invalid.length ? `, invalid ${invalid.length}` : ""}`,
+  );
 }
 
 function layerLabel(layerName) {
-  return layerName === "used" ? "사용 위치" : "보급품 위치";
+  if (currentLanguage === "ko") return layerName === "used" ? "사용 위치" : "보급품 위치";
+  return layerName === "used" ? "used coordinates" : "supply coordinates";
 }
 
 function refresh(text) {
-  supplyCount.textContent = getRemainingSupply().size.toLocaleString("ko-KR");
-  usedCount.textContent = layers.used.size.toLocaleString("ko-KR");
+  updateCountSummary();
   updatedAtLabel.textContent = formatUpdatedAt(latestUpdatedAt);
+  applyTranslations();
   renderSourceTabs();
   renderLevelTabs();
   saveLocalFallback();
@@ -840,11 +1236,11 @@ function saveLocalFallback() {
 
 async function mutateUsed(payload, pendingText) {
   if (!isAdmin) {
-    setMessage("관리자 코드 입력 후 수정할 수 있습니다.");
+    setMessage(currentLanguage === "ko" ? "관리자 코드 입력 후 수정할 수 있습니다." : "Enter the admin code to make changes.");
     return false;
   }
   if (isHistoryPreview) {
-    setMessage("변경 로그 미리보기 중입니다. 실시간 목록으로 돌아간 뒤 수정해 주세요.");
+    setMessage(currentLanguage === "ko" ? "변경 로그 미리보기 중입니다. 실시간 목록으로 돌아간 뒤 수정해 주세요." : "You are previewing a log version. Return to the live list before editing.");
     return false;
   }
 
@@ -855,16 +1251,16 @@ async function mutateUsed(payload, pendingText) {
       body: JSON.stringify({ source: activeSource, level: activeLevel, ...payload }),
     });
     applyState({ ...data, updatedAt: data.updatedAt || new Date().toISOString() });
-    refresh("반영되었습니다.");
-    showToast("반영되었습니다.");
+    refresh(currentLanguage === "ko" ? "반영되었습니다." : "Applied.");
+    showToast(currentLanguage === "ko" ? "반영되었습니다." : "Applied.");
     if (isSuperAdmin) loadHistory();
     return true;
   } catch (error) {
     if (error.status === 401 || error.status === 403) {
-      logoutAdmin("관리자 코드가 만료되었거나 올바르지 않습니다.");
+      logoutAdmin(currentLanguage === "ko" ? "관리자 코드가 만료되었거나 올바르지 않습니다." : "Admin code expired or is invalid.");
       return false;
     }
-    setMessage(`저장 실패: ${error.message}`);
+    setMessage(currentLanguage === "ko" ? `저장 실패: ${error.message}` : `Save failed: ${error.message}`);
     return false;
   }
 }
@@ -883,10 +1279,10 @@ function showToast(text) {
 }
 
 function formatUpdatedAt(value) {
-  if (!value) return "최신화 -";
+  if (!value) return t("updatedDash");
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "최신화 -";
-  const parts = new Intl.DateTimeFormat("ko-KR", {
+  if (Number.isNaN(date.getTime())) return t("updatedDash");
+  const parts = new Intl.DateTimeFormat(currentLanguage === "ko" ? "ko-KR" : "en-US", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -900,7 +1296,9 @@ function formatUpdatedAt(value) {
       result[part.type] = part.value;
       return result;
     }, {});
-  return `최신화 ${parts.year}.${parts.month}.${parts.day} ${parts.hour}:${parts.minute}`;
+  return currentLanguage === "ko"
+    ? `최신화 ${parts.year}.${parts.month}.${parts.day} ${parts.hour}:${parts.minute}`
+    : `Updated ${parts.year}.${parts.month}.${parts.day} ${parts.hour}:${parts.minute}`;
 }
 
 function renderList() {
@@ -918,7 +1316,7 @@ function createBuildings() {
       const x = (BOUNDARIES[colIndex] + BOUNDARIES[colIndex + 1]) / 2;
       const yIndex = BOUNDARIES.length - 2 - rowIndex;
       const y = (BOUNDARIES[yIndex] + BOUNDARIES[yIndex + 1]) / 2;
-      entries.push({ x, y, type, name: BUILDING_NAMES[type] });
+      entries.push({ x, y, type });
     });
   });
   return entries;
@@ -1034,11 +1432,11 @@ function getIncendiaryRecommendations() {
 
 function renderRecommendations() {
   const recommendations = getIncendiaryRecommendations();
-  recommendationCount.textContent = `${recommendations.length.toLocaleString("ko-KR")}개`;
+  recommendationCount.textContent = countText(recommendations.length);
   recommendationSection.hidden = !showRecommendations;
 
   if (recommendations.length === 0) {
-    recommendationList.innerHTML = `<div class="empty-list">추천 가능한 좌표쌍이 없습니다.</div>`;
+    recommendationList.innerHTML = `<div class="empty-list">${currentLanguage === "ko" ? "추천 가능한 좌표쌍이 없습니다." : "No recommended coordinate pairs."}</div>`;
     return;
   }
 
@@ -1050,9 +1448,9 @@ function renderRecommendations() {
           <button class="recommendation-jump" type="button" data-action="recommendation-jump" data-id="${item.id}">
             <span class="recommendation-rank">${index + 1}</span>
             <span class="recommendation-coords">${a} + ${b}</span>
-            <span class="recommendation-meta">중심 ${item.target.x},${item.target.y}</span>
+            <span class="recommendation-meta">${currentLanguage === "ko" ? "중심" : "Center"} ${item.target.x},${item.target.y}</span>
           </button>
-          <button class="row-action admin-only" type="button" data-action="recommendation-use" data-id="${item.id}">둘 다 사용</button>
+          <button class="row-action admin-only" type="button" data-action="recommendation-use" data-id="${item.id}">${currentLanguage === "ko" ? "둘 다 사용" : "Mark both used"}</button>
         </div>
       `;
     })
@@ -1070,10 +1468,10 @@ function renderLayerList(layer, target, countTarget, query) {
 
   const visible = entries.slice(0, 5000);
   const hiddenCount = entries.length - visible.length;
-  countTarget.textContent = `${entries.length.toLocaleString("ko-KR")}개`;
+  countTarget.textContent = countText(entries.length);
 
   if (visible.length === 0) {
-    target.innerHTML = `<div class="empty-list">표시할 좌표가 없습니다.</div>`;
+    target.innerHTML = `<div class="empty-list">${currentLanguage === "ko" ? "표시할 좌표가 없습니다." : "No coordinates to show."}</div>`;
     return;
   }
 
@@ -1082,17 +1480,20 @@ function renderLayerList(layer, target, countTarget, query) {
       const isManual = layerName === "used" && !layers.supply.has(coord);
       const secondaryAction =
         layerName === "supply"
-          ? `<button class="row-action admin-only" type="button" data-action="mark-used" data-layer="${layerName}" data-coord="${coord}">사용</button>`
-          : `<button class="row-action delete admin-only" type="button" data-action="remove" data-layer="${layerName}" data-coord="${coord}">취소</button>`;
+          ? `<button class="row-action admin-only" type="button" data-action="mark-used" data-layer="${layerName}" data-coord="${coord}">${currentLanguage === "ko" ? "사용" : "Use"}</button>`
+          : `<button class="row-action delete admin-only" type="button" data-action="remove" data-layer="${layerName}" data-coord="${coord}">${currentLanguage === "ko" ? "취소" : "Undo"}</button>`;
       return `
         <div class="coord-row${isManual ? " manual-row" : ""}">
-          <button class="coord-jump" type="button" data-action="jump" data-coord="${coord}" ${isManual ? `title="${MANUAL_USED_NOTE}"` : ""}>${isManual ? '<b class="dot manual-dot"></b>' : ""}${coord}</button>
+          <button class="coord-jump" type="button" data-action="jump" data-coord="${coord}" ${isManual ? `title="${escapeHtml(manualUsedNote())}"` : ""}>${isManual ? '<b class="dot manual-dot"></b>' : ""}${coord}</button>
           ${secondaryAction}
         </div>
       `;
     })
     .join("");
-  const overflow = hiddenCount > 0 ? `<div class="empty-list">... ${hiddenCount.toLocaleString("ko-KR")}개 더 있음</div>` : "";
+  const overflow =
+    hiddenCount > 0
+      ? `<div class="empty-list">${currentLanguage === "ko" ? `... ${hiddenCount.toLocaleString("ko-KR")}개 더 있음` : `... ${hiddenCount.toLocaleString("en-US")} more`}</div>`
+      : "";
   target.innerHTML = rows + overflow;
 }
 
@@ -1139,9 +1540,9 @@ async function applyMapClick(point) {
     const target = findNearestVisibleCoordinate(layers.used, point) || findNearestVisibleCoordinate(getRemainingSupply(), point);
     if (target) {
       startCoordinatePulse(target, markerColorForCoordinate(target), false);
-      setMessage(`${target} 위치를 확인했습니다.`);
+      setMessage(currentLanguage === "ko" ? `${target} 위치를 확인했습니다.` : `Checked ${target}.`);
     } else {
-      setMessage("관리자 코드 입력 후 수정할 수 있습니다.");
+      setMessage(currentLanguage === "ko" ? "관리자 코드 입력 후 수정할 수 있습니다." : "Enter the admin code to make changes.");
     }
     return;
   }
@@ -1152,7 +1553,7 @@ async function applyMapClick(point) {
     const ok = await mutateUsed(payload);
     if (ok) {
       startCoordinatePulse(used, layers.supply.has(used) ? "#6aa6ff" : "#b779ff", false);
-      setMessage(`${used} 사용 표시를 취소했습니다.`);
+      setMessage(currentLanguage === "ko" ? `${used} 사용 표시를 취소했습니다.` : `Undid used mark for ${used}.`);
     }
     return;
   }
@@ -1162,7 +1563,7 @@ async function applyMapClick(point) {
     const ok = await mutateUsed({ add: [supply] });
     if (ok) {
       startCoordinatePulse(supply, "#ff6b6b", false);
-      setMessage(`${supply} 보급품을 사용한 것으로 표시했습니다.`);
+      setMessage(currentLanguage === "ko" ? `${supply} 보급품을 사용한 것으로 표시했습니다.` : `Marked ${supply} as used.`);
     }
   }
 }
@@ -1209,7 +1610,7 @@ function findNearestBuilding(point) {
 function jumpToCoordinate(coordText) {
   focusCoordinate(coordText);
   startCoordinatePulse(coordText, markerColorForCoordinate(coordText), false);
-  setMessage(`${coordText} 위치로 이동했습니다.`);
+  setMessage(currentLanguage === "ko" ? `${coordText} 위치로 이동했습니다.` : `Moved to ${coordText}.`);
 }
 
 function focusCoordinate(coordText) {
@@ -1279,13 +1680,17 @@ async function handleRecommendationAction(event) {
   const item = findRecommendation(button.dataset.id || "");
   if (!item) {
     renderRecommendations();
-    setMessage("추천 좌표가 최신 목록에 없습니다.");
+    setMessage(currentLanguage === "ko" ? "추천 좌표가 최신 목록에 없습니다." : "This recommendation is no longer in the latest list.");
     return;
   }
 
   if (button.dataset.action === "recommendation-jump") {
     focusRecommendation(item);
-    setMessage(`${item.coords.join(" + ")} 추천 중심은 ${item.target.x},${item.target.y} 입니다.`);
+    setMessage(
+      currentLanguage === "ko"
+        ? `${item.coords.join(" + ")} 추천 중심은 ${item.target.x},${item.target.y} 입니다.`
+        : `${item.coords.join(" + ")} recommended center is ${item.target.x},${item.target.y}.`,
+    );
     return;
   }
 
@@ -1293,7 +1698,7 @@ async function handleRecommendationAction(event) {
     const ok = await mutateUsed({ add: item.coords });
     if (ok) {
       focusRecommendation(item);
-      setMessage(`${item.coords.join(" + ")} 두 좌표를 사용 처리했습니다.`);
+      setMessage(currentLanguage === "ko" ? `${item.coords.join(" + ")} 두 좌표를 사용 처리했습니다.` : `Marked both ${item.coords.join(" + ")} as used.`);
     }
   }
 }
@@ -1313,7 +1718,7 @@ async function handleListAction(event) {
     const ok = await mutateUsed({ add: [coord] });
     if (ok) {
       startCoordinatePulse(coord, "#ff6b6b");
-      setMessage(`${coord} 사용한 보급품으로 표시했습니다.`);
+      setMessage(currentLanguage === "ko" ? `${coord} 사용한 보급품으로 표시했습니다.` : `Marked ${coord} as used.`);
     }
     return;
   }
@@ -1322,7 +1727,7 @@ async function handleListAction(event) {
     const ok = await mutateUsed(payload);
     if (ok) {
       startCoordinatePulse(coord, layers.supply.has(coord) ? "#6aa6ff" : "#b779ff");
-      setMessage(`${coord} 사용 표시를 취소했습니다.`);
+      setMessage(currentLanguage === "ko" ? `${coord} 사용 표시를 취소했습니다.` : `Undid used mark for ${coord}.`);
     }
   }
 }
@@ -1484,7 +1889,7 @@ function drawFurnaceRange(rect, x, y) {
     ctx.font = "700 12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    const label = `${x},${y} · 용광로 38×38`;
+    const label = currentLanguage === "ko" ? `${x},${y} · 용광로 38×38` : `${x},${y} · Furnace 38×38`;
     const textWidth = ctx.measureText(label).width;
     const boxW = textWidth + 12;
     const boxH = 22;
@@ -1596,9 +2001,10 @@ function drawBuildingMarker(x, y, size, building, showName) {
   ctx.fillText(String(building.type), shieldX, shieldY - size * 0.02);
 
   if (showName) {
+    const name = buildingName(building.type);
     ctx.font = `700 ${Math.max(10, Math.min(15, size * 0.26))}px ui-sans-serif, system-ui, sans-serif`;
     const paddingX = size * 0.16;
-    const labelW = ctx.measureText(building.name).width + paddingX * 2;
+    const labelW = ctx.measureText(name).width + paddingX * 2;
     const labelH = Math.max(18, size * 0.34);
     const labelX = x - size * 0.34;
     const labelY = y - size * 0.68;
@@ -1610,7 +2016,7 @@ function drawBuildingMarker(x, y, size, building, showName) {
     ctx.stroke();
     ctx.fillStyle = "#f5f7fb";
     ctx.textAlign = "left";
-    ctx.fillText(building.name, labelX + paddingX, labelY + labelH / 2);
+    ctx.fillText(name, labelX + paddingX, labelY + labelH / 2);
   }
   ctx.restore();
 }
@@ -1623,7 +2029,7 @@ function drawLayer(rect, layer, color, alpha, note = "") {
     if (x < view.x || x > view.x + view.size || y < view.y || y > view.y + view.size) continue;
     const p = mapToScreen(x, y, rect);
     drawMarker(p.x, p.y, iconSize, color, alpha);
-    if (showLabels) drawCoordinateLabel(p.x, p.y, iconSize, note ? `${coord} 수기` : coord, color);
+    if (showLabels) drawCoordinateLabel(p.x, p.y, iconSize, note ? `${coord} ${currentLanguage === "ko" ? "수기" : "manual"}` : coord, color);
   }
 }
 
@@ -1636,7 +2042,7 @@ function drawManualLayer(rect, layer, color) {
     drawManualRange(rect, x, y, color);
     const p = mapToScreen(x, y, rect);
     drawMarker(p.x, p.y, iconSize, color, 1);
-    if (showLabels) drawCoordinateLabel(p.x, p.y, iconSize, `${coord} 수기`, color);
+    if (showLabels) drawCoordinateLabel(p.x, p.y, iconSize, `${coord} ${currentLanguage === "ko" ? "수기" : "manual"}`, color);
   }
 }
 
@@ -1701,7 +2107,7 @@ function drawRecommendationRange(rect, item, active) {
 
   if (active && view.size <= 180) {
     const center = mapToScreen(item.target.x, item.target.y, rect);
-    const label = `중심 ${item.target.x},${item.target.y}`;
+    const label = `${currentLanguage === "ko" ? "중심" : "Center"} ${item.target.x},${item.target.y}`;
     ctx.font = "700 12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -1926,15 +2332,15 @@ function copyLayer(layerName) {
   }
   const text = coordinates.join("\n");
   navigator.clipboard.writeText(text).then(
-    () => setMessage(`${layerLabel(layerName)} 목록을 복사했습니다.`),
-    () => setMessage("복사 권한이 막혔습니다."),
+    () => setMessage(currentLanguage === "ko" ? `${layerLabel(layerName)} 목록을 복사했습니다.` : `Copied ${layerLabel(layerName)} list.`),
+    () => setMessage(currentLanguage === "ko" ? "복사 권한이 막혔습니다." : "Copy permission was blocked."),
   );
 }
 
 async function loginAdmin() {
   const code = adminCodeInput.value.trim();
   if (!code) {
-    setMessage("관리자 코드를 입력해 주세요.");
+    setMessage(currentLanguage === "ko" ? "관리자 코드를 입력해 주세요." : "Enter the admin code.");
     adminCodeInput.focus();
     return;
   }
@@ -1950,15 +2356,15 @@ async function loginAdmin() {
     sessionStorage.setItem(ADMIN_TOKEN_KEY, adminToken);
     sessionStorage.setItem(ADMIN_ROLE_KEY, adminRole);
     adminCodeInput.value = "";
-    setAdminMode(true, isSuperAdmin ? "상위 관리자 모드" : "관리자 모드");
-    refresh(isSuperAdmin ? "상위 관리자 모드로 전환되었습니다." : "관리자 모드로 전환되었습니다.");
-    showToast(isSuperAdmin ? "상위 관리자 모드입니다." : "관리자 모드입니다.");
+    setAdminMode(true, isSuperAdmin ? t("superAdminMode") : t("adminMode"));
+    refresh(isSuperAdmin ? (currentLanguage === "ko" ? "상위 관리자 모드로 전환되었습니다." : "Switched to super admin mode.") : (currentLanguage === "ko" ? "관리자 모드로 전환되었습니다." : "Switched to admin mode."));
+    showToast(isSuperAdmin ? t("superAdminMode") : t("adminMode"));
   } catch (error) {
-    logoutAdmin("관리자 코드가 맞지 않습니다.");
+    logoutAdmin(currentLanguage === "ko" ? "관리자 코드가 맞지 않습니다." : "Admin code is incorrect.");
   }
 }
 
-function logoutAdmin(text = "보기 전용 모드") {
+function logoutAdmin(text = t("viewerMode")) {
   adminToken = "";
   adminRole = "";
   isSuperAdmin = false;
@@ -1973,15 +2379,24 @@ function logoutAdmin(text = "보기 전용 모드") {
 
 document.getElementById("pasteAddButton").addEventListener("click", () => pasteInto(addInput));
 document.getElementById("addButton").addEventListener("click", () => addCoordinates(addInput.value));
+languageToggle?.addEventListener("click", () => {
+  setLanguage(currentLanguage === "ko" ? "en" : "ko");
+  setMessage(currentLanguage === "ko" ? "한국어로 전환했습니다." : "Switched to English.");
+});
+languageModal?.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-lang-choice]");
+  if (!button) return;
+  setLanguage(button.dataset.langChoice, { closeModal: true, showAlliance: true });
+});
 closeAllianceNoticeButton?.addEventListener("click", closeAllianceNotice);
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && allianceNotice && !allianceNotice.hidden) closeAllianceNotice();
 });
 document.getElementById("clearButton").addEventListener("click", () => {
-  if (!confirm(`${activeLevel}단계 사용한 보급품 목록을 모두 비울까요?`)) return;
+  if (!confirm(currentLanguage === "ko" ? `${activeLevel}단계 사용한 보급품 목록을 모두 비울까요?` : `Clear the used supply list for Level ${activeLevel}?`)) return;
   const initialUsed = Array.from(layers.initialUsedBySource[activeSource]?.[activeLevel] || []);
   mutateUsed({ clear: true, hideInitial: initialUsed }).then((ok) => {
-    if (ok) setMessage(`${activeLevel}단계 사용한 보급품 목록을 모두 비웠습니다.`);
+    if (ok) setMessage(currentLanguage === "ko" ? `${activeLevel}단계 사용한 보급품 목록을 모두 비웠습니다.` : `Cleared the used supply list for Level ${activeLevel}.`);
   });
 });
 document.getElementById("fitButton").addEventListener("click", () => {
@@ -1994,15 +2409,15 @@ buildingToggle.addEventListener("click", () => {
   buildingToggle.setAttribute("aria-pressed", String(showBuildings));
   buildingToggle.classList.toggle("is-active", showBuildings);
   draw();
-  setMessage(showBuildings ? "건물 표시를 켰습니다." : "건물 표시를 껐습니다.");
+  setMessage(showBuildings ? (currentLanguage === "ko" ? "건물 표시를 켰습니다." : "Buildings are visible.") : (currentLanguage === "ko" ? "건물 표시를 껐습니다." : "Buildings are hidden."));
 });
 incendiaryToggle.addEventListener("click", () => {
   setRangeMode(showIncendiary ? "" : "incendiary");
   draw();
   setMessage(
     showIncendiary
-      ? "연소탄 찍기 ON · 지도 위에서 9×9 범위를 확인하고 클릭하면 임시 표시가 남습니다."
-      : "연소탄 찍기를 껐습니다.",
+      ? (currentLanguage === "ko" ? "연소탄 찍기 ON · 지도 위에서 9×9 범위를 확인하고 클릭하면 임시 표시가 남습니다." : "Incendiary pin ON. Preview the 9×9 range and click the map to place it.")
+      : (currentLanguage === "ko" ? "연소탄 찍기를 껐습니다." : "Incendiary pin OFF."),
   );
 });
 furnaceToggle.addEventListener("click", () => {
@@ -2010,8 +2425,8 @@ furnaceToggle.addEventListener("click", () => {
   draw();
   setMessage(
     showFurnace
-      ? "용광로 찍기 ON · 중심 기준 5×5 본체와 38×38 온도 범위를 확인하고 클릭하면 임시 표시가 남습니다."
-      : "용광로 찍기를 껐습니다.",
+      ? (currentLanguage === "ko" ? "용광로 찍기 ON · 중심 기준 5×5 본체와 38×38 온도 범위를 확인하고 클릭하면 임시 표시가 남습니다." : "Furnace pin ON. Preview the 5×5 body and 38×38 range, then click the map to place it.")
+      : (currentLanguage === "ko" ? "용광로 찍기를 껐습니다." : "Furnace pin OFF."),
   );
 });
 recommendationToggle.addEventListener("click", () => {
@@ -2023,13 +2438,13 @@ recommendationToggle.addEventListener("click", () => {
   if (!showRecommendations) activeRecommendationId = "";
   renderRecommendations();
   draw();
-  setMessage(showRecommendations ? "연소탄 추천을 표시합니다." : "연소탄 추천을 숨겼습니다.");
+  setMessage(showRecommendations ? (currentLanguage === "ko" ? "연소탄 추천을 표시합니다." : "Showing incendiary recommendations.") : (currentLanguage === "ko" ? "연소탄 추천을 숨겼습니다." : "Hiding incendiary recommendations."));
 });
 clearTempButton.addEventListener("click", () => {
   tempRanges = [];
   saveTempRanges();
   draw();
-  setMessage("임시 표시를 모두 지웠습니다.");
+  setMessage(currentLanguage === "ko" ? "임시 표시를 모두 지웠습니다." : "Cleared all temporary ranges.");
 });
 document.getElementById("copySupplyButton").addEventListener("click", () => copyLayer("supply"));
 document.getElementById("copyUsedButton").addEventListener("click", () => copyLayer("used"));
@@ -2037,7 +2452,7 @@ createHistorySnapshotButton?.addEventListener("click", createHistorySnapshot);
 refreshHistoryButton?.addEventListener("click", loadHistory);
 exitHistoryPreviewButton?.addEventListener("click", () => clearHistoryPreview(true));
 adminLoginButton.addEventListener("click", loginAdmin);
-adminLogoutButton.addEventListener("click", () => logoutAdmin("보기 전용 모드"));
+adminLogoutButton.addEventListener("click", () => logoutAdmin(t("viewerMode")));
 adminCodeInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") loginAdmin();
 });
@@ -2076,13 +2491,13 @@ canvas.addEventListener("mousemove", (event) => {
   const coord = screenToMap(canvasPoint(event));
   const key = keyOf(coord.x, coord.y);
   const tags = [];
-  if (layers.used.has(key) && !layers.supply.has(key)) tags.push("수기 보정");
-  else if (layers.used.has(key)) tags.push("사용");
-  else if (layers.supply.has(key)) tags.push("보급품");
-  hoverCoord.textContent = `좌표: ${coord.x},${coord.y}${tags.length ? ` · ${tags.join("/")}` : ""}`;
+  if (layers.used.has(key) && !layers.supply.has(key)) tags.push(currentLanguage === "ko" ? "수기 보정" : "manual");
+  else if (layers.used.has(key)) tags.push(currentLanguage === "ko" ? "사용" : "used");
+  else if (layers.supply.has(key)) tags.push(currentLanguage === "ko" ? "보급품" : "supply");
+  hoverCoord.textContent = coordinateLabel(coord.x, coord.y, tags);
   const manual = findNearestVisibleCoordinate(getManualUsed(), canvasPoint(event));
   const building = showBuildings ? findNearestBuilding(canvasPoint(event)) : null;
-  canvas.title = manual ? `${manual}: ${MANUAL_USED_NOTE}` : building ? `${building.type}. ${building.name}` : "";
+  canvas.title = manual ? `${manual}: ${manualUsedNote()}` : building ? `${building.type}. ${buildingName(building.type)}` : "";
   if (showIncendiary || showFurnace) {
     const prev = hoverMapPoint;
     hoverMapPoint = coord;
@@ -2102,7 +2517,7 @@ canvas.addEventListener("mousemove", (event) => {
   draw();
 });
 canvas.addEventListener("mouseleave", () => {
-  hoverCoord.textContent = "좌표: -";
+  hoverCoord.textContent = t("coordDash");
   if ((showIncendiary || showFurnace) && hoverMapPoint) {
     hoverMapPoint = null;
     draw();
@@ -2133,7 +2548,7 @@ canvas.addEventListener(
       const point = touchPoint(event.touches[0]);
       if (showIncendiary || showFurnace) {
         hoverMapPoint = screenToMap(point);
-        hoverCoord.textContent = `좌표: ${hoverMapPoint.x},${hoverMapPoint.y}`;
+        hoverCoord.textContent = coordinateLabel(hoverMapPoint.x, hoverMapPoint.y);
         touchGesture = { type: "preview", ...point, didDrag: false };
         draw();
         event.preventDefault();
@@ -2164,7 +2579,7 @@ canvas.addEventListener(
       const moved = Math.hypot(point.x - touchGesture.x, point.y - touchGesture.y);
       if (moved > 3) touchGesture.didDrag = true;
       const coord = screenToMap(point);
-      hoverCoord.textContent = `좌표: ${coord.x},${coord.y}`;
+      hoverCoord.textContent = coordinateLabel(coord.x, coord.y);
       const prev = hoverMapPoint;
       hoverMapPoint = coord;
       if (!prev || prev.x !== coord.x || prev.y !== coord.y) draw();
@@ -2178,7 +2593,7 @@ canvas.addEventListener(
       view.y = touchGesture.viewY + dy;
       clampView();
       const coord = screenToMap(point);
-      hoverCoord.textContent = `좌표: ${coord.x},${coord.y}`;
+      hoverCoord.textContent = coordinateLabel(coord.x, coord.y);
       hoverMapPoint = coord;
       draw();
     } else if (event.touches.length === 2) {
@@ -2199,7 +2614,7 @@ canvas.addEventListener(
       view.size = newSize;
       clampView();
       const coord = screenToMap(center);
-      hoverCoord.textContent = `좌표: ${coord.x},${coord.y}`;
+      hoverCoord.textContent = coordinateLabel(coord.x, coord.y);
       draw();
     }
 
@@ -2261,4 +2676,4 @@ document.addEventListener("visibilitychange", () => {
 });
 
 loadInitialData();
-showAllianceNoticeIfNeeded();
+if (!showLanguageModalIfNeeded()) showAllianceNoticeIfNeeded();
