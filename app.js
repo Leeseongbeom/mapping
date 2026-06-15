@@ -97,8 +97,11 @@ const I18N = {
     furnace: "용광로 찍기",
     furnaceTitle: "5×5 본체와 38×38 연맹 용광로 온도 범위를 중심 기준으로 표시합니다.",
     furnaceHelp: "켜고 지도 클릭 시 5×5 본체와 38×38 효과 범위를 임시 표시합니다.",
+    missile: "미사일 찍기",
+    missileTitle: "25×25 미사일 범위를 커서 위치에 미리 표시합니다.",
+    missileHelp: "켜고 지도 클릭 시 중심과 네 꼭짓점 좌표를 함께 표시합니다.",
     clearTemp: "임시 표시 지우기",
-    clearTempHelp: "지도에 찍어둔 연소탄·용광로 임시 범위를 모두 지웁니다.",
+    clearTempHelp: "지도에 찍어둔 연소탄·용광로·미사일 임시 범위를 모두 지웁니다.",
     analysis: "분석",
     recommendation: "연소탄 추천",
     recommendationHelp: "남은 보급품 중 2개 이상 같이 먹기 좋은 위치를 보여줍니다.",
@@ -178,6 +181,9 @@ const I18N = {
     furnace: "Furnace",
     furnaceTitle: "Show the 5×5 body and 38×38 alliance furnace temperature range from the center.",
     furnaceHelp: "Click the map to place a 5×5 body and 38×38 range.",
+    missile: "Missile",
+    missileTitle: "Preview a 25×25 missile range at the cursor position.",
+    missileHelp: "Click the map to show the center and four corner coordinates.",
     clearTemp: "Clear Pins",
     clearTempHelp: "Remove all temporary ranges.",
     analysis: "Analysis",
@@ -269,6 +275,7 @@ const bulkAddSection = document.getElementById("bulkAddSection");
 const buildingToggle = document.getElementById("buildingToggle");
 const incendiaryToggle = document.getElementById("incendiaryToggle");
 const furnaceToggle = document.getElementById("furnaceToggle");
+const missileToggle = document.getElementById("missileToggle");
 const recommendationToggle = document.getElementById("recommendationToggle");
 const clearTempButton = document.getElementById("clearTempButton");
 const recommendationSection = document.getElementById("recommendationSection");
@@ -303,6 +310,7 @@ const ADMIN_ROLE_KEY = "lastwar-admin-role";
 const BUILDING_TOGGLE_KEY = "lastwar-show-buildings";
 const INCENDIARY_TOGGLE_KEY = "lastwar-show-incendiary";
 const FURNACE_TOGGLE_KEY = "lastwar-show-furnace";
+const MISSILE_TOGGLE_KEY = "lastwar-show-missile";
 const RECOMMENDATION_TOGGLE_KEY = "lastwar-show-incendiary-recommendations";
 const TEMP_RANGES_KEY = "lastwar-temp-ranges";
 const CLIENT_ID_KEY = "lastwar-client-id";
@@ -326,6 +334,7 @@ let latestUpdatedAt = "";
 let showBuildings = localStorage.getItem(BUILDING_TOGGLE_KEY) === "1";
 let showIncendiary = localStorage.getItem(INCENDIARY_TOGGLE_KEY) === "1";
 let showFurnace = localStorage.getItem(FURNACE_TOGGLE_KEY) === "1";
+let showMissile = localStorage.getItem(MISSILE_TOGGLE_KEY) === "1";
 let showRecommendations = localStorage.getItem(RECOMMENDATION_TOGGLE_KEY) === "1";
 let hoverMapPoint = null;
 let clientId = "";
@@ -379,7 +388,7 @@ function loadTempRanges() {
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(
       (item) =>
-        (item?.type === "incendiary" || item?.type === "furnace") &&
+        (item?.type === "incendiary" || item?.type === "furnace" || item?.type === "missile") &&
         Number.isInteger(item.x) &&
         Number.isInteger(item.y) &&
         item.x >= 0 &&
@@ -399,17 +408,34 @@ function saveTempRanges() {
 function syncRangeModeToggles() {
   localStorage.setItem(INCENDIARY_TOGGLE_KEY, showIncendiary ? "1" : "0");
   localStorage.setItem(FURNACE_TOGGLE_KEY, showFurnace ? "1" : "0");
+  localStorage.setItem(MISSILE_TOGGLE_KEY, showMissile ? "1" : "0");
   incendiaryToggle.setAttribute("aria-pressed", String(showIncendiary));
   incendiaryToggle.classList.toggle("is-active", showIncendiary);
   furnaceToggle.setAttribute("aria-pressed", String(showFurnace));
   furnaceToggle.classList.toggle("is-active", showFurnace);
-  if (!showIncendiary && !showFurnace) hoverMapPoint = null;
+  missileToggle.setAttribute("aria-pressed", String(showMissile));
+  missileToggle.classList.toggle("is-active", showMissile);
+  if (!showIncendiary && !showFurnace && !showMissile) hoverMapPoint = null;
 }
 
 function setRangeMode(mode) {
   showIncendiary = mode === "incendiary";
   showFurnace = mode === "furnace";
+  showMissile = mode === "missile";
   syncRangeModeToggles();
+}
+
+function rangeName(type) {
+  if (type === "furnace") return currentLanguage === "ko" ? "용광로" : "furnace";
+  if (type === "missile") return currentLanguage === "ko" ? "미사일" : "missile";
+  return currentLanguage === "ko" ? "연소탄" : "incendiary";
+}
+
+function activeRangeType() {
+  if (showFurnace) return "furnace";
+  if (showMissile) return "missile";
+  if (showIncendiary) return "incendiary";
+  return "";
 }
 
 function addTempRange(type, point) {
@@ -419,8 +445,8 @@ function addTempRange(type, point) {
   draw();
   setMessage(
     currentLanguage === "ko"
-      ? `${type === "furnace" ? "용광로" : "연소탄"} 임시 위치 ${point.x},${point.y}를 표시했습니다.`
-      : `Placed temporary ${type === "furnace" ? "furnace" : "incendiary"} range at ${point.x},${point.y}.`,
+      ? `${rangeName(type)} 임시 위치 ${point.x},${point.y}를 표시했습니다.`
+      : `Placed temporary ${rangeName(type)} range at ${point.x},${point.y}.`,
   );
 }
 
@@ -663,6 +689,9 @@ function applyTranslations() {
   setText(furnaceToggle, t("furnace"));
   setAttr(furnaceToggle, "title", t("furnaceTitle"));
   setText(furnaceToggle.closest(".tool-control")?.querySelector("small"), t("furnaceHelp"));
+  setText(missileToggle, t("missile"));
+  setAttr(missileToggle, "title", t("missileTitle"));
+  setText(missileToggle.closest(".tool-control")?.querySelector("small"), t("missileHelp"));
   setText(clearTempButton, t("clearTemp"));
   setText(clearTempButton.closest(".tool-control")?.querySelector("small"), t("clearTempHelp"));
   setText(recommendationToggle, t("recommendation"));
@@ -1765,6 +1794,9 @@ function draw() {
   if (showFurnace && hoverMapPoint) {
     drawFurnaceRange(rect, hoverMapPoint.x, hoverMapPoint.y);
   }
+  if (showMissile && hoverMapPoint) {
+    drawMissileRange(rect, hoverMapPoint.x, hoverMapPoint.y);
+  }
   drawFrame(rect);
   drawPulses(rect);
 }
@@ -1772,8 +1804,18 @@ function draw() {
 function drawTempRanges(rect) {
   for (const item of tempRanges) {
     if (item.type === "furnace") drawFurnaceRange(rect, item.x, item.y);
+    else if (item.type === "missile") drawMissileRange(rect, item.x, item.y);
     else drawIncendiaryRange(rect, item.x, item.y);
   }
+}
+
+function rangeBounds(x, y, radius) {
+  return {
+    minX: Math.max(0, x - radius),
+    minY: Math.max(0, y - radius),
+    maxX: Math.min(999, x + radius),
+    maxY: Math.min(999, y + radius),
+  };
 }
 
 function drawMapRect(rect, minX, minY, maxX, maxY, fillStyle, strokeStyle, lineWidth) {
@@ -1915,6 +1957,88 @@ function drawFurnaceRange(rect, x, y) {
     ctx.fillText(label, center.x, center.y);
     ctx.restore();
   }
+}
+
+function drawMissileRange(rect, x, y) {
+  const bounds = rangeBounds(x, y, 12);
+  const box = drawMapRect(
+    rect,
+    bounds.minX,
+    bounds.minY,
+    bounds.maxX,
+    bounds.maxY,
+    "rgba(255, 255, 255, 0.08)",
+    "rgba(255, 255, 255, 0.92)",
+    Math.max(1.6, Math.min(2.8, rect.width / view.size)),
+  );
+  if (!box) return;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(box.left, box.top, box.width, box.height);
+  ctx.clip();
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.58)";
+  ctx.lineWidth = Math.max(1, Math.min(1.8, rect.width / view.size));
+  const spacing = Math.max(6, Math.min(14, box.width / 8));
+  for (let offset = -box.height; offset < box.width + box.height; offset += spacing) {
+    ctx.beginPath();
+    ctx.moveTo(box.left + offset, box.top + box.height);
+    ctx.lineTo(box.left + offset + box.height, box.top);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  const center = mapToScreen(x, y, rect);
+  ctx.save();
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+  ctx.lineWidth = Math.max(1.5, Math.min(2.5, rect.width / view.size));
+  const cross = Math.max(5, Math.min(12, rect.width / view.size));
+  ctx.beginPath();
+  ctx.moveTo(center.x - cross, center.y);
+  ctx.lineTo(center.x + cross, center.y);
+  ctx.moveTo(center.x, center.y - cross);
+  ctx.lineTo(center.x, center.y + cross);
+  ctx.stroke();
+  ctx.restore();
+
+  const corners = [
+    { x: bounds.minX, y: bounds.maxY, anchor: "bottom" },
+    { x: bounds.maxX, y: bounds.maxY, anchor: "bottom" },
+    { x: bounds.minX, y: bounds.minY, anchor: "top" },
+    { x: bounds.maxX, y: bounds.minY, anchor: "top" },
+  ];
+  drawMapLabel(rect, x, y, `${currentLanguage === "ko" ? "중심" : "Center"} ${x},${y}`, "#ffffff", "center");
+  for (const corner of corners) {
+    drawMapLabel(rect, corner.x, corner.y, `${corner.x},${corner.y}`, "#ffffff", corner.anchor);
+  }
+}
+
+function drawMapLabel(rect, x, y, text, color, anchor = "center") {
+  const point = mapToScreen(x, y, rect);
+  const fontSize = Math.max(10, Math.min(13, rect.width / view.size * 1.8));
+  const paddingX = 5;
+  const paddingY = 3;
+  const textOffset = anchor === "top" ? 13 : anchor === "bottom" ? -13 : 0;
+
+  ctx.save();
+  ctx.font = `800 ${fontSize}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const textWidth = ctx.measureText(text).width;
+  const boxWidth = textWidth + paddingX * 2;
+  const boxHeight = fontSize + paddingY * 2;
+  const boxX = Math.max(2, Math.min(rect.width - boxWidth - 2, point.x - boxWidth / 2));
+  const boxY = Math.max(2, Math.min(rect.height - boxHeight - 2, point.y + textOffset - boxHeight / 2));
+  ctx.fillStyle = "rgba(8, 13, 22, 0.86)";
+  roundRect(boxX, boxY, boxWidth, boxHeight, 4);
+  ctx.fill();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+  roundRect(boxX, boxY, boxWidth, boxHeight, 4);
+  ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.fillText(text, boxX + boxWidth / 2, boxY + boxHeight / 2);
+  ctx.restore();
 }
 
 function mapToScreen(x, y, rect) {
@@ -2438,6 +2562,15 @@ furnaceToggle.addEventListener("click", () => {
       : (currentLanguage === "ko" ? "용광로 찍기를 껐습니다." : "Furnace pin OFF."),
   );
 });
+missileToggle.addEventListener("click", () => {
+  setRangeMode(showMissile ? "" : "missile");
+  draw();
+  setMessage(
+    showMissile
+      ? (currentLanguage === "ko" ? "미사일 찍기 ON · 지도 위에서 25×25 범위와 중심/꼭짓점 좌표를 확인하고 클릭하면 임시 표시가 남습니다." : "Missile pin ON. Preview the 25×25 range with center and corner coordinates, then click the map to place it.")
+      : (currentLanguage === "ko" ? "미사일 찍기를 껐습니다." : "Missile pin OFF."),
+  );
+});
 recommendationToggle.addEventListener("click", () => {
   showRecommendations = !showRecommendations;
   localStorage.setItem(RECOMMENDATION_TOGGLE_KEY, showRecommendations ? "1" : "0");
@@ -2507,7 +2640,7 @@ canvas.addEventListener("mousemove", (event) => {
   const manual = findNearestVisibleCoordinate(getManualUsed(), canvasPoint(event));
   const building = showBuildings ? findNearestBuilding(canvasPoint(event)) : null;
   canvas.title = manual ? `${manual}: ${manualUsedNote()}` : building ? `${building.type}. ${buildingName(building.type)}` : "";
-  if (showIncendiary || showFurnace) {
+  if (activeRangeType()) {
     const prev = hoverMapPoint;
     hoverMapPoint = coord;
     if (!isDragging && (!prev || prev.x !== coord.x || prev.y !== coord.y)) draw();
@@ -2527,7 +2660,7 @@ canvas.addEventListener("mousemove", (event) => {
 });
 canvas.addEventListener("mouseleave", () => {
   hoverCoord.textContent = t("coordDash");
-  if ((showIncendiary || showFurnace) && hoverMapPoint) {
+  if (activeRangeType() && hoverMapPoint) {
     hoverMapPoint = null;
     draw();
   } else {
@@ -2543,7 +2676,8 @@ canvas.addEventListener("mousedown", (event) => {
 window.addEventListener("mouseup", (event) => {
   if (isDragging && dragStart && !dragStart.didDrag && event.target === canvas) {
     const point = canvasPoint(event);
-    if (showFurnace || showIncendiary) addTempRange(showFurnace ? "furnace" : "incendiary", screenToMap(point));
+    const rangeType = activeRangeType();
+    if (rangeType) addTempRange(rangeType, screenToMap(point));
     else applyMapClick(point);
   }
   isDragging = false;
@@ -2555,7 +2689,7 @@ canvas.addEventListener(
     lastTouchAt = Date.now();
     if (event.touches.length === 1) {
       const point = touchPoint(event.touches[0]);
-      if (showIncendiary || showFurnace) {
+      if (activeRangeType()) {
         hoverMapPoint = screenToMap(point);
         hoverCoord.textContent = coordinateLabel(hoverMapPoint.x, hoverMapPoint.y);
         touchGesture = { type: "preview", ...point, didDrag: false };
@@ -2639,22 +2773,22 @@ canvas.addEventListener(
       touchGesture?.type === "pan" &&
       !touchGesture.didDrag &&
       event.changedTouches.length === 1 &&
-      !showIncendiary && !showFurnace
+      !activeRangeType()
     ) {
       applyMapClick(touchPoint(event.changedTouches[0]));
     } else if (
       touchGesture?.type === "preview" &&
       !touchGesture.didDrag &&
       event.changedTouches.length === 1 &&
-      (showIncendiary || showFurnace)
+      activeRangeType()
     ) {
-      addTempRange(showFurnace ? "furnace" : "incendiary", screenToMap(touchPoint(event.changedTouches[0])));
+      addTempRange(activeRangeType(), screenToMap(touchPoint(event.changedTouches[0])));
     }
     if (event.touches.length === 0) {
       touchGesture = null;
     } else if (event.touches.length === 1) {
       const point = touchPoint(event.touches[0]);
-      if (showIncendiary || showFurnace) {
+      if (activeRangeType()) {
         touchGesture = { type: "preview", ...point, didDrag: true };
       } else {
         touchGesture = { type: "pan", ...point, viewX: view.x, viewY: view.y, didDrag: true };
@@ -2667,7 +2801,12 @@ canvas.addEventListener(
 window.addEventListener("resize", draw);
 
 canvas.style.cursor = "grab";
-if (showIncendiary && showFurnace) showFurnace = false;
+if ([showIncendiary, showFurnace, showMissile].filter(Boolean).length > 1) {
+  const preferredMode = showMissile ? "missile" : showFurnace ? "furnace" : "incendiary";
+  showIncendiary = preferredMode === "incendiary";
+  showFurnace = preferredMode === "furnace";
+  showMissile = preferredMode === "missile";
+}
 buildingToggle.setAttribute("aria-pressed", String(showBuildings));
 buildingToggle.classList.toggle("is-active", showBuildings);
 syncRangeModeToggles();
