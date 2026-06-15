@@ -310,6 +310,7 @@ const exitHistoryPreviewButton = document.getElementById("exitHistoryPreviewButt
 const historyPreviewNotice = document.getElementById("historyPreviewNotice");
 const statsLabel = document.getElementById("statsLabel");
 const levelTabs = document.getElementById("levelTabs");
+const cursorCoord = document.getElementById("cursorCoord");
 
 const layers = {
   supply: new Set(),
@@ -1584,6 +1585,31 @@ function canvasPoint(event) {
   return { x: event.clientX - rect.left, y: event.clientY - rect.top, w: rect.width, h: rect.height };
 }
 
+function updateCursorCoord(point, label) {
+  if (!cursorCoord) return;
+  cursorCoord.hidden = false;
+  cursorCoord.textContent = label;
+
+  const offset = 14;
+  const safeGap = 8;
+  const boxWidth = cursorCoord.offsetWidth;
+  const boxHeight = cursorCoord.offsetHeight;
+  let left = point.x + offset;
+  let top = point.y + offset;
+
+  if (left + boxWidth + safeGap > point.w) left = point.x - boxWidth - offset;
+  if (top + boxHeight + safeGap > point.h) top = point.y - boxHeight - offset;
+
+  left = Math.max(safeGap, Math.min(point.w - boxWidth - safeGap, left));
+  top = Math.max(safeGap, Math.min(point.h - boxHeight - safeGap, top));
+  cursorCoord.style.left = `${left}px`;
+  cursorCoord.style.top = `${top}px`;
+}
+
+function hideCursorCoord() {
+  if (cursorCoord) cursorCoord.hidden = true;
+}
+
 function touchPoint(touch) {
   const rect = canvas.getBoundingClientRect();
   return { x: touch.clientX - rect.left, y: touch.clientY - rect.top, w: rect.width, h: rect.height };
@@ -2780,15 +2806,18 @@ sourceTabs.addEventListener("click", (event) => {
 });
 
 canvas.addEventListener("mousemove", (event) => {
-  const coord = screenToMap(canvasPoint(event));
+  const point = canvasPoint(event);
+  const coord = screenToMap(point);
   const key = keyOf(coord.x, coord.y);
   const tags = [];
   if (layers.used.has(key) && !layers.supply.has(key)) tags.push(currentLanguage === "ko" ? "수기 보정" : "manual");
   else if (layers.used.has(key)) tags.push(currentLanguage === "ko" ? "사용" : "used");
   else if (layers.supply.has(key)) tags.push(currentLanguage === "ko" ? "보급품" : "supply");
-  hoverCoord.textContent = coordinateLabel(coord.x, coord.y, tags);
-  const manual = findNearestVisibleCoordinate(getManualUsed(), canvasPoint(event));
-  const building = showBuildings ? findNearestBuilding(canvasPoint(event)) : null;
+  const label = coordinateLabel(coord.x, coord.y, tags);
+  hoverCoord.textContent = label;
+  updateCursorCoord(point, label);
+  const manual = findNearestVisibleCoordinate(getManualUsed(), point);
+  const building = showBuildings ? findNearestBuilding(point) : null;
   canvas.title = manual ? `${manual}: ${manualUsedNote()}` : building ? `${building.type}. ${buildingName(building.type)}` : "";
   if (activeRangeType()) {
     const prev = hoverMapPoint;
@@ -2798,7 +2827,6 @@ canvas.addEventListener("mousemove", (event) => {
     hoverMapPoint = coord;
   }
   if (!isDragging) return;
-  const point = canvasPoint(event);
   const moved = Math.hypot(point.x - dragStart.x, point.y - dragStart.y);
   if (moved > 3) dragStart.didDrag = true;
   const dx = ((point.x - dragStart.x) / point.w) * view.size;
@@ -2810,6 +2838,7 @@ canvas.addEventListener("mousemove", (event) => {
 });
 canvas.addEventListener("mouseleave", () => {
   hoverCoord.textContent = t("coordDash");
+  hideCursorCoord();
   if (activeRangeType() && hoverMapPoint) {
     hoverMapPoint = null;
     draw();
