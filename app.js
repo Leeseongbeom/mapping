@@ -88,6 +88,8 @@ const I18N = {
     mapView: "지도 보기",
     showBuildings: "건물 보기",
     showBuildingsHelp: "마을·도시·공장 같은 건물 위치를 지도에 겹쳐 봅니다.",
+    showGrid: "격자선 보기",
+    showGridHelp: "모눈종이처럼 투명한 보조 격자선을 지도에 겹쳐 봅니다.",
     fitMap: "전체 보기",
     fitMapHelp: "지도를 0,0부터 999,999까지 한 번에 맞춥니다.",
     rangeTools: "범위 찍기",
@@ -172,6 +174,8 @@ const I18N = {
     mapView: "View",
     showBuildings: "Buildings",
     showBuildingsHelp: "Overlay building positions on the map.",
+    showGrid: "Grid",
+    showGridHelp: "Overlay a faint graph-paper grid on the map.",
     fitMap: "Fit Map",
     fitMapHelp: "Fit the full 0,0 to 999,999 map.",
     rangeTools: "Range Pins",
@@ -273,6 +277,7 @@ const sourceLabel = document.getElementById("sourceLabel");
 const sourceTabs = document.getElementById("sourceTabs");
 const bulkAddSection = document.getElementById("bulkAddSection");
 const buildingToggle = document.getElementById("buildingToggle");
+const gridToggle = document.getElementById("gridToggle");
 const incendiaryToggle = document.getElementById("incendiaryToggle");
 const furnaceToggle = document.getElementById("furnaceToggle");
 const missileToggle = document.getElementById("missileToggle");
@@ -308,6 +313,7 @@ const API_BASE = location.protocol === "file:" ? "http://127.0.0.1:4174" : "";
 const ADMIN_TOKEN_KEY = "lastwar-admin-token";
 const ADMIN_ROLE_KEY = "lastwar-admin-role";
 const BUILDING_TOGGLE_KEY = "lastwar-show-buildings";
+const GRID_TOGGLE_KEY = "lastwar-show-grid";
 const INCENDIARY_TOGGLE_KEY = "lastwar-show-incendiary";
 const FURNACE_TOGGLE_KEY = "lastwar-show-furnace";
 const MISSILE_TOGGLE_KEY = "lastwar-show-missile";
@@ -332,6 +338,7 @@ let isSuperAdmin = adminRole === "super";
 let toastTimer = null;
 let latestUpdatedAt = "";
 let showBuildings = localStorage.getItem(BUILDING_TOGGLE_KEY) === "1";
+let showGrid = localStorage.getItem(GRID_TOGGLE_KEY) === "1";
 let showIncendiary = localStorage.getItem(INCENDIARY_TOGGLE_KEY) === "1";
 let showFurnace = localStorage.getItem(FURNACE_TOGGLE_KEY) === "1";
 let showMissile = localStorage.getItem(MISSILE_TOGGLE_KEY) === "1";
@@ -681,6 +688,8 @@ function applyTranslations() {
   [t("mapView"), t("rangeTools"), t("analysis"), t("manage")].forEach((label, index) => setText(groups[index], label));
   setText(buildingToggle, t("showBuildings"));
   setText(buildingToggle.closest(".tool-control")?.querySelector("small"), t("showBuildingsHelp"));
+  setText(gridToggle, t("showGrid"));
+  setText(gridToggle.closest(".tool-control")?.querySelector("small"), t("showGridHelp"));
   setText("#fitButton", t("fitMap"));
   setText(document.getElementById("fitButton")?.closest(".tool-control")?.querySelector("small"), t("fitMapHelp"));
   setText(incendiaryToggle, t("incendiary"));
@@ -1781,6 +1790,7 @@ function draw() {
   grad.addColorStop(1, "#0a1414");
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, rect.width, rect.height);
+  if (showGrid) drawGrid(rect);
   drawBoundaries(rect);
   if (showBuildings) drawBuildings(rect);
   drawLayer(rect, getRemainingSupply(), "#6aa6ff", 1);
@@ -1816,6 +1826,43 @@ function rangeBounds(x, y, radius) {
     maxX: Math.min(999, x + radius),
     maxY: Math.min(999, y + radius),
   };
+}
+
+function gridStepForView(rect) {
+  const minPixels = 18;
+  const candidates = [1, 2, 5, 10, 25, 50, 100, 200];
+  return candidates.find((step) => (step / view.size) * rect.width >= minPixels) || 200;
+}
+
+function drawGrid(rect) {
+  const step = gridStepForView(rect);
+  const majorStep = step * 5;
+  const startX = Math.ceil(view.x / step) * step;
+  const endX = Math.floor((view.x + view.size) / step) * step;
+  const startY = Math.ceil(view.y / step) * step;
+  const endY = Math.floor((view.y + view.size) / step) * step;
+
+  ctx.save();
+  ctx.lineWidth = 1;
+  for (let x = startX; x <= endX; x += step) {
+    const p = mapToScreen(x, view.y, rect);
+    const major = x % majorStep === 0;
+    ctx.strokeStyle = major ? "rgba(255, 255, 255, 0.13)" : "rgba(255, 255, 255, 0.055)";
+    ctx.beginPath();
+    ctx.moveTo(p.x, 0);
+    ctx.lineTo(p.x, rect.height);
+    ctx.stroke();
+  }
+  for (let y = startY; y <= endY; y += step) {
+    const p = mapToScreen(view.x, y, rect);
+    const major = y % majorStep === 0;
+    ctx.strokeStyle = major ? "rgba(255, 255, 255, 0.13)" : "rgba(255, 255, 255, 0.055)";
+    ctx.beginPath();
+    ctx.moveTo(0, p.y);
+    ctx.lineTo(rect.width, p.y);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 function drawMapRect(rect, minX, minY, maxX, maxY, fillStyle, strokeStyle, lineWidth) {
@@ -2544,6 +2591,14 @@ buildingToggle.addEventListener("click", () => {
   draw();
   setMessage(showBuildings ? (currentLanguage === "ko" ? "건물 표시를 켰습니다." : "Buildings are visible.") : (currentLanguage === "ko" ? "건물 표시를 껐습니다." : "Buildings are hidden."));
 });
+gridToggle.addEventListener("click", () => {
+  showGrid = !showGrid;
+  localStorage.setItem(GRID_TOGGLE_KEY, showGrid ? "1" : "0");
+  gridToggle.setAttribute("aria-pressed", String(showGrid));
+  gridToggle.classList.toggle("is-active", showGrid);
+  draw();
+  setMessage(showGrid ? (currentLanguage === "ko" ? "격자선을 표시합니다." : "Grid is visible.") : (currentLanguage === "ko" ? "격자선을 숨겼습니다." : "Grid is hidden."));
+});
 incendiaryToggle.addEventListener("click", () => {
   setRangeMode(showIncendiary ? "" : "incendiary");
   draw();
@@ -2809,6 +2864,8 @@ if ([showIncendiary, showFurnace, showMissile].filter(Boolean).length > 1) {
 }
 buildingToggle.setAttribute("aria-pressed", String(showBuildings));
 buildingToggle.classList.toggle("is-active", showBuildings);
+gridToggle.setAttribute("aria-pressed", String(showGrid));
+gridToggle.classList.toggle("is-active", showGrid);
 syncRangeModeToggles();
 recommendationToggle.setAttribute("aria-pressed", String(showRecommendations));
 recommendationToggle.classList.toggle("is-active", showRecommendations);
