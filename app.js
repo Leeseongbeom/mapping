@@ -1859,6 +1859,7 @@ function draw() {
   ctx.fillRect(0, 0, rect.width, rect.height);
   if (showGrid) drawGrid(rect);
   drawBoundaries(rect);
+  if (hoverMapPoint) drawHoverTile(rect, hoverMapPoint.x, hoverMapPoint.y);
   if (showBuildings) drawBuildings(rect);
   drawLayer(rect, getRemainingSupply(), "#6aa6ff", 1);
   drawLayer(rect, getConfirmedUsed(), "#ff6b6b", 1);
@@ -1957,6 +1958,21 @@ function drawMapRect(rect, minX, minY, maxX, maxY, fillStyle, strokeStyle, lineW
   ctx.fillRect(left, top, width, height);
   ctx.strokeRect(left, top, width, height);
   return { left, top, width, height };
+}
+
+function drawHoverTile(rect, x, y) {
+  ctx.save();
+  drawMapRect(
+    rect,
+    x,
+    y,
+    x,
+    y,
+    "rgba(96, 165, 250, 0.20)",
+    "rgba(147, 197, 253, 0.85)",
+    Math.max(1.2, Math.min(2.2, rect.width / view.size)),
+  );
+  ctx.restore();
 }
 
 function drawIncendiaryRange(rect, x, y) {
@@ -2822,6 +2838,7 @@ sourceTabs.addEventListener("click", (event) => {
 canvas.addEventListener("mousemove", (event) => {
   const point = canvasPoint(event);
   const coord = screenToMap(point);
+  const previousHover = hoverMapPoint;
   const key = keyOf(coord.x, coord.y);
   const tags = [];
   if (layers.used.has(key) && !layers.supply.has(key)) tags.push(currentLanguage === "ko" ? "수기 보정" : "manual");
@@ -2833,13 +2850,9 @@ canvas.addEventListener("mousemove", (event) => {
   const manual = findNearestVisibleCoordinate(getManualUsed(), point);
   const building = showBuildings ? findNearestBuilding(point) : null;
   canvas.title = manual ? `${manual}: ${manualUsedNote()}` : building ? `${building.type}. ${buildingName(building.type)}` : "";
-  if (activeRangeType()) {
-    const prev = hoverMapPoint;
-    hoverMapPoint = coord;
-    if (!isDragging && (!prev || prev.x !== coord.x || prev.y !== coord.y)) draw();
-  } else {
-    hoverMapPoint = coord;
-  }
+  hoverMapPoint = coord;
+  const hoverChanged = !previousHover || previousHover.x !== coord.x || previousHover.y !== coord.y;
+  if (!isDragging && hoverChanged) draw();
   if (!isDragging) return;
   const moved = Math.hypot(point.x - dragStart.x, point.y - dragStart.y);
   if (moved > 3) dragStart.didDrag = true;
@@ -2853,12 +2866,9 @@ canvas.addEventListener("mousemove", (event) => {
 canvas.addEventListener("mouseleave", () => {
   hoverCoord.textContent = t("coordDash");
   hideCursorCoord();
-  if (activeRangeType() && hoverMapPoint) {
-    hoverMapPoint = null;
-    draw();
-  } else {
-    hoverMapPoint = null;
-  }
+  const hadHover = Boolean(hoverMapPoint);
+  hoverMapPoint = null;
+  if (hadHover) draw();
 });
 canvas.addEventListener("mousedown", (event) => {
   if (Date.now() - lastTouchAt < 500) return;
@@ -2993,7 +3003,7 @@ canvas.addEventListener(
 );
 window.addEventListener("resize", draw);
 
-canvas.style.cursor = "grab";
+canvas.style.cursor = "crosshair";
 if ([showIncendiary, showFurnace, showMissile, showDummyBase].filter(Boolean).length > 1) {
   const preferredMode = showDummyBase ? "dummyBase" : showMissile ? "missile" : showFurnace ? "furnace" : "incendiary";
   showIncendiary = preferredMode === "incendiary";
