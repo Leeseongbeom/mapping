@@ -2,6 +2,11 @@ import { GEUMGO_INITIAL_USED_BY_LEVEL, GEUMGO_SUPPLY_BY_LEVEL } from "./geumgo-d
 import { SUPPLY_BY_LEVEL } from "./supply-data.js";
 
 const MAP_SIZE = 1000;
+const COORD_MIN = 0;
+const COORD_MAX = MAP_SIZE - 1;
+const MAP_MIN = COORD_MIN - 0.5;
+const MAP_MAX = COORD_MAX + 0.5;
+const MIN_VIEW_SIZE = 10;
 const SUPPLY_LEVEL_IDS = ["1", "2", "3", "4", "5", "6", "7"];
 const EMPTY_SUPPLY_BY_LEVEL = Object.fromEntries(SUPPLY_LEVEL_IDS.map((level) => [level, ""]));
 const SUPPLY_SOURCES = {
@@ -342,7 +347,7 @@ const ALLIANCE_NOTICE_KEY = "lastwar-alliance-notice-date-v2";
 const HEARTBEAT_MS = 30 * 1000;
 const STATS_POLL_MS = 20 * 1000;
 
-let view = { x: 0, y: 0, size: MAP_SIZE };
+let view = { x: MAP_MIN, y: MAP_MIN, size: MAP_SIZE };
 let isDragging = false;
 let dragStart = null;
 let touchGesture = null;
@@ -1626,15 +1631,22 @@ function touchDistance(touches) {
 }
 
 function screenToMap(point) {
-  const x = Math.floor(view.x + (point.x / point.w) * view.size);
-  const y = Math.floor(view.y + (1 - point.y / point.h) * view.size);
-  return { x: Math.max(0, Math.min(999, x)), y: Math.max(0, Math.min(999, y)) };
+  const x = Math.floor(view.x + (point.x / point.w) * view.size + 0.5);
+  const y = Math.floor(view.y + (1 - point.y / point.h) * view.size + 0.5);
+  return { x: Math.max(COORD_MIN, Math.min(COORD_MAX, x)), y: Math.max(COORD_MIN, Math.min(COORD_MAX, y)) };
+}
+
+function screenToWorld(point) {
+  return {
+    x: view.x + (point.x / point.w) * view.size,
+    y: view.y + (1 - point.y / point.h) * view.size,
+  };
 }
 
 function clampView() {
-  view.size = Math.max(10, Math.min(MAP_SIZE, view.size));
-  view.x = Math.max(0, Math.min(MAP_SIZE - view.size, view.x));
-  view.y = Math.max(0, Math.min(MAP_SIZE - view.size, view.y));
+  view.size = Math.max(MIN_VIEW_SIZE, Math.min(MAP_SIZE, view.size));
+  view.x = Math.max(MAP_MIN, Math.min(MAP_MAX - view.size, view.x));
+  view.y = Math.max(MAP_MIN, Math.min(MAP_MAX - view.size, view.y));
 }
 
 async function applyMapClick(point) {
@@ -1880,10 +1892,10 @@ function drawTempRanges(rect) {
 
 function rangeBounds(x, y, radius) {
   return {
-    minX: Math.max(0, x - radius),
-    minY: Math.max(0, y - radius),
-    maxX: Math.min(999, x + radius),
-    maxY: Math.min(999, y + radius),
+    minX: Math.max(COORD_MIN, x - radius),
+    minY: Math.max(COORD_MIN, y - radius),
+    maxX: Math.min(COORD_MAX, x + radius),
+    maxY: Math.min(COORD_MAX, y + radius),
   };
 }
 
@@ -2008,10 +2020,10 @@ function drawFurnaceRange(rect, x, y) {
   ctx.save();
   const effect = drawMapRect(
     rect,
-    Math.max(0, x - 18),
-    Math.max(0, y - 18),
-    Math.min(999, x + 19),
-    Math.min(999, y + 19),
+    Math.max(COORD_MIN, x - 18),
+    Math.max(COORD_MIN, y - 18),
+    Math.min(COORD_MAX, x + 19),
+    Math.min(COORD_MAX, y + 19),
     "rgba(56, 189, 248, 0.11)",
     "rgba(56, 189, 248, 0.85)",
     Math.max(1.3, Math.min(2.4, rect.width / view.size)),
@@ -2036,10 +2048,10 @@ function drawFurnaceRange(rect, x, y) {
   ctx.save();
   drawMapRect(
     rect,
-    Math.max(0, x - 2),
-    Math.max(0, y - 2),
-    Math.min(999, x + 2),
-    Math.min(999, y + 2),
+    Math.max(COORD_MIN, x - 2),
+    Math.max(COORD_MIN, y - 2),
+    Math.min(COORD_MAX, x + 2),
+    Math.min(COORD_MAX, y + 2),
     "rgba(14, 165, 233, 0.34)",
     "rgba(224, 242, 254, 0.95)",
     Math.max(1.8, Math.min(3, rect.width / view.size)),
@@ -2521,13 +2533,14 @@ function drawMarker(x, y, size, color, alpha) {
   const scale = size / 28;
   const shadowWidth = Math.max(5, size * 0.78);
   const shadowHeight = Math.max(2, size * 0.18);
+  const pinTipOffset = 13 * scale;
 
   ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
   ctx.beginPath();
-  ctx.ellipse(x, y + size * 0.24, shadowWidth / 2, shadowHeight / 2, 0, 0, Math.PI * 2);
+  ctx.ellipse(x, y + size * 0.06, shadowWidth / 2, shadowHeight / 2, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.translate(x, y - size * 0.22);
+  ctx.translate(x, y - pinTipOffset);
   ctx.scale(scale, scale);
   ctx.fillStyle = color;
   ctx.strokeStyle = "rgba(255, 255, 255, 0.78)";
@@ -2605,9 +2618,9 @@ function drawFrame(rect) {
 function zoomAt(event) {
   event.preventDefault();
   const point = canvasPoint(event);
-  const before = screenToMap(point);
+  const before = screenToWorld(point);
   const factor = event.deltaY < 0 ? 0.8 : 1.25;
-  const newSize = Math.max(10, Math.min(MAP_SIZE, view.size * factor));
+  const newSize = Math.max(MIN_VIEW_SIZE, Math.min(MAP_SIZE, view.size * factor));
   view.x = before.x - (point.x / point.w) * newSize;
   view.y = before.y - (1 - point.y / point.h) * newSize;
   view.size = newSize;
@@ -2693,7 +2706,7 @@ document.getElementById("clearButton").addEventListener("click", () => {
   });
 });
 document.getElementById("fitButton").addEventListener("click", () => {
-  view = { x: 0, y: 0, size: MAP_SIZE };
+  view = { x: MAP_MIN, y: MAP_MIN, size: MAP_SIZE };
   draw();
 });
 buildingToggle.addEventListener("click", () => {
@@ -2884,7 +2897,7 @@ canvas.addEventListener(
         type: "pinch",
         startDistance: Math.max(1, touchDistance(event.touches)),
         startSize: view.size,
-        centerMap: screenToMap(center),
+        centerMap: screenToWorld(center),
       };
     }
     event.preventDefault();
@@ -2926,12 +2939,12 @@ canvas.addEventListener(
           type: "pinch",
           startDistance: Math.max(1, touchDistance(event.touches)),
           startSize: view.size,
-          centerMap: screenToMap(center),
+          centerMap: screenToWorld(center),
         };
       }
       const center = touchCenter(event.touches);
       const distance = Math.max(1, touchDistance(event.touches));
-      const newSize = Math.max(10, Math.min(MAP_SIZE, touchGesture.startSize * (touchGesture.startDistance / distance)));
+      const newSize = Math.max(MIN_VIEW_SIZE, Math.min(MAP_SIZE, touchGesture.startSize * (touchGesture.startDistance / distance)));
       view.x = touchGesture.centerMap.x - (center.x / center.w) * newSize;
       view.y = touchGesture.centerMap.y - (1 - center.y / center.h) * newSize;
       view.size = newSize;
