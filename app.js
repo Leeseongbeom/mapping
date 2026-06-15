@@ -2205,8 +2205,8 @@ function mapToScreen(x, y, rect) {
 }
 
 function drawBoundaries(rect) {
-  ctx.strokeStyle = "rgba(148, 200, 180, 0.14)";
-  ctx.lineWidth = 1;
+  ctx.strokeStyle = "rgba(245, 158, 11, 0.42)";
+  ctx.lineWidth = 1.35;
   for (const boundary of BOUNDARIES) {
     const tileBoundary = boundary - 0.5;
     if (tileBoundary >= view.x - 0.5 && tileBoundary <= view.x + view.size + 0.5) {
