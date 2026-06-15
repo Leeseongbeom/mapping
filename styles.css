@@ -135,6 +135,7 @@ select {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+  --app-title-width: 248px;
 }
 
 h1,
@@ -144,6 +145,8 @@ p {
 }
 
 h1 {
+  flex: 0 0 var(--app-title-width);
+  min-width: var(--app-title-width);
   font-size: 22px;
   font-weight: 700;
   line-height: 1.2;
@@ -158,6 +161,7 @@ h1 {
 .updated-at {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   min-height: 24px;
   padding: 3px 8px;
   border: 1px solid var(--line-strong);
@@ -169,10 +173,15 @@ h1 {
   white-space: nowrap;
 }
 
+#updatedAtLabel {
+  width: 177px;
+}
+
 .stats-label {
   border-color: rgba(106, 166, 255, 0.45);
   background: rgba(106, 166, 255, 0.12);
   color: var(--accent);
+  min-width: 194px;
 }
 
 .source-label {
@@ -1350,6 +1359,10 @@ select {
     align-items: stretch;
     flex-direction: column;
     gap: 10px;
+  }
+
+  .title-row {
+    column-gap: 6px;
   }
 
   #message {
