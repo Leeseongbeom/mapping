@@ -2208,15 +2208,16 @@ function drawBoundaries(rect) {
   ctx.strokeStyle = "rgba(148, 200, 180, 0.14)";
   ctx.lineWidth = 1;
   for (const boundary of BOUNDARIES) {
-    if (boundary >= view.x && boundary <= view.x + view.size) {
-      const p = mapToScreen(boundary, view.y, rect);
+    const tileBoundary = boundary - 0.5;
+    if (tileBoundary >= view.x - 0.5 && tileBoundary <= view.x + view.size + 0.5) {
+      const p = mapToScreen(tileBoundary, view.y, rect);
       ctx.beginPath();
       ctx.moveTo(p.x, 0);
       ctx.lineTo(p.x, rect.height);
       ctx.stroke();
     }
-    if (boundary >= view.y && boundary <= view.y + view.size) {
-      const p = mapToScreen(view.x, boundary, rect);
+    if (tileBoundary >= view.y - 0.5 && tileBoundary <= view.y + view.size + 0.5) {
+      const p = mapToScreen(view.x, tileBoundary, rect);
       ctx.beginPath();
       ctx.moveTo(0, p.y);
       ctx.lineTo(rect.width, p.y);
