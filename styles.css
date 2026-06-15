@@ -198,7 +198,10 @@ h1 {
 }
 
 .language-toggle {
-  width: auto;
+  order: 99;
+  flex: 0 0 82px;
+  width: 82px;
+  margin-left: auto;
   min-height: 24px;
   padding: 3px 8px;
   border-radius: var(--radius-xs);
@@ -240,6 +243,10 @@ select {
   gap: 8px;
 }
 
+.button-row > button {
+  min-inline-size: 112px;
+}
+
 .toolbar-actions {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -269,7 +276,7 @@ select {
 
 .tool-buttons {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(142px, 1fr));
   gap: 8px;
   align-items: stretch;
 }
@@ -286,6 +293,7 @@ select {
 .tool-control button {
   width: 100%;
   min-width: 0;
+  min-height: 38px;
   overflow-wrap: anywhere;
 }
 
@@ -411,7 +419,7 @@ button.primary:hover {
 
 .level-tabs button,
 .source-tabs button {
-  min-width: 68px;
+  min-width: 86px;
   min-height: 34px;
   flex: 0 0 auto;
   padding: 7px 12px;
@@ -420,7 +428,7 @@ button.primary:hover {
 }
 
 .source-tabs button {
-  width: 120px;
+  width: 128px;
   text-align: center;
 }
 
@@ -1166,6 +1174,7 @@ select {
 }
 
 .copy-list-button {
+  min-width: 46px;
   min-height: 22px;
   height: 22px;
   padding: 0 8px;
@@ -1262,6 +1271,7 @@ select {
 }
 
 .row-action {
+  min-width: 74px;
   min-height: 22px;
   height: 22px;
   border-radius: 5px;
@@ -1346,6 +1356,15 @@ select {
   .list-actions,
   .admin-login-row {
     flex-wrap: wrap;
+  }
+
+  .button-row > button {
+    flex: 1 1 112px;
+  }
+
+  .language-toggle {
+    flex-basis: 82px;
+    margin-left: auto;
   }
 
   .toolbar-actions {
