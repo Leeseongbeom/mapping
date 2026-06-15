@@ -23,9 +23,12 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const SUPABASE_TABLE = process.env.SUPABASE_TABLE || "used_coordinates";
 const SUPABASE_HISTORY_TABLE = process.env.SUPABASE_HISTORY_TABLE || "used_history";
 const USE_SUPABASE = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
+const SUPPLY_LEVEL_IDS = ["1", "2", "3", "4", "5", "6", "7"];
+const EMPTY_SUPPLY_BY_LEVEL = Object.fromEntries(SUPPLY_LEVEL_IDS.map((level) => [level, ""]));
 const SUPPLY_SOURCES = {
   cpt: SUPPLY_BY_LEVEL,
   geumgo: GEUMGO_SUPPLY_BY_LEVEL,
+  untitled: EMPTY_SUPPLY_BY_LEVEL,
 };
 const SOURCE_KEYS = Object.keys(SUPPLY_SOURCES);
 const DEFAULT_SOURCE = "cpt";
@@ -126,18 +129,25 @@ function decodeUsedEntry(value) {
   if (typeof value !== "string") return null;
   const geumgoMatch = value.match(/^G([1-7]):(.+)$/);
   const cptMatch = value.match(/^L([1-7]):(.+)$/);
-  const source = geumgoMatch ? "geumgo" : DEFAULT_SOURCE;
-  const level = geumgoMatch ? normalizeLevel(geumgoMatch[1]) : cptMatch ? normalizeLevel(cptMatch[1]) : DEFAULT_LEVEL;
-  const coord = geumgoMatch ? geumgoMatch[2] : cptMatch ? cptMatch[2] : value;
+  const untitledMatch = value.match(/^U([1-7]):(.+)$/);
+  const source = geumgoMatch ? "geumgo" : untitledMatch ? "untitled" : DEFAULT_SOURCE;
+  const level = geumgoMatch
+    ? normalizeLevel(geumgoMatch[1])
+    : untitledMatch
+      ? normalizeLevel(untitledMatch[1])
+      : cptMatch
+        ? normalizeLevel(cptMatch[1])
+        : DEFAULT_LEVEL;
+  const coord = geumgoMatch ? geumgoMatch[2] : untitledMatch ? untitledMatch[2] : cptMatch ? cptMatch[2] : value;
   if (!isCoordinate(coord)) return null;
   return { source, level, coord };
 }
 
 function decodeHiddenInitialEntry(value) {
   if (typeof value !== "string") return null;
-  const match = value.match(/^H:([CG])([1-7]):(.+)$/);
+  const match = value.match(/^H:([CGU])([1-7]):(.+)$/);
   if (!match) return null;
-  const source = match[1] === "G" ? "geumgo" : DEFAULT_SOURCE;
+  const source = match[1] === "G" ? "geumgo" : match[1] === "U" ? "untitled" : DEFAULT_SOURCE;
   const level = normalizeLevel(match[2]);
   const coord = match[3];
   if (!isCoordinate(coord)) return null;
@@ -148,11 +158,13 @@ function encodeUsedEntry(source, level, coord) {
   const normalizedSource = normalizeSource(source);
   const normalizedLevel = normalizeLevel(level);
   if (normalizedSource === "geumgo") return `G${normalizedLevel}:${coord}`;
+  if (normalizedSource === "untitled") return `U${normalizedLevel}:${coord}`;
   return normalizedLevel === DEFAULT_LEVEL ? coord : `L${normalizedLevel}:${coord}`;
 }
 
 function encodeHiddenInitialEntry(source, level, coord) {
-  const sourceCode = normalizeSource(source) === "geumgo" ? "G" : "C";
+  const normalizedSource = normalizeSource(source);
+  const sourceCode = normalizedSource === "geumgo" ? "G" : normalizedSource === "untitled" ? "U" : "C";
   return `H:${sourceCode}${normalizeLevel(level)}:${coord}`;
 }
 

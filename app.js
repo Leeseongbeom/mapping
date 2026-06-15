@@ -2,6 +2,8 @@ import { GEUMGO_INITIAL_USED_BY_LEVEL, GEUMGO_SUPPLY_BY_LEVEL } from "./geumgo-d
 import { SUPPLY_BY_LEVEL } from "./supply-data.js";
 
 const MAP_SIZE = 1000;
+const SUPPLY_LEVEL_IDS = ["1", "2", "3", "4", "5", "6", "7"];
+const EMPTY_SUPPLY_BY_LEVEL = Object.fromEntries(SUPPLY_LEVEL_IDS.map((level) => [level, ""]));
 const SUPPLY_SOURCES = {
   cpt: {
     label: "CptHedgehog",
@@ -15,6 +17,12 @@ const SUPPLY_SOURCES = {
     initialUsedByLevel: GEUMGO_INITIAL_USED_BY_LEVEL,
     sourceUrl:
       "https://docs.google.com/spreadsheets/d/1hE-9zooI2krrEBjOFF0E2Too51ulXqenJTP8GKemtOY/edit?gid=418127067#gid=418127067",
+  },
+  untitled: {
+    label: "무제",
+    supplyByLevel: EMPTY_SUPPLY_BY_LEVEL,
+    initialUsedByLevel: {},
+    sourceUrl: "",
   },
 };
 const SOURCE_KEYS = Object.keys(SUPPLY_SOURCES);
@@ -102,8 +110,11 @@ const I18N = {
     missile: "미사일 찍기",
     missileTitle: "25×25 미사일 범위를 커서 위치에 미리 표시합니다.",
     missileHelp: "켜고 지도 클릭 시 중심과 네 꼭짓점 좌표를 함께 표시합니다.",
+    dummyBase: "더미 기지 찍기",
+    dummyBaseTitle: "3×3 더미 기지 범위를 커서 위치에 미리 표시합니다.",
+    dummyBaseHelp: "켜고 지도 클릭 시 3×3 더미 기지 범위를 임시 표시합니다.",
     clearTemp: "임시 표시 지우기",
-    clearTempHelp: "지도에 찍어둔 연소탄·용광로·미사일 임시 범위를 모두 지웁니다.",
+    clearTempHelp: "지도에 찍어둔 연소탄·용광로·미사일·더미 기지 임시 범위를 모두 지웁니다.",
     analysis: "분석",
     recommendation: "연소탄 추천",
     recommendationHelp: "남은 보급품 중 2개 이상 같이 먹기 좋은 위치를 보여줍니다.",
@@ -188,6 +199,9 @@ const I18N = {
     missile: "Missile",
     missileTitle: "Preview a 25×25 missile range at the cursor position.",
     missileHelp: "Click the map to show the center and four corner coordinates.",
+    dummyBase: "Dummy Base",
+    dummyBaseTitle: "Preview a 3×3 dummy base range at the cursor position.",
+    dummyBaseHelp: "Click the map to place a temporary 3×3 dummy base range.",
     clearTemp: "Clear Pins",
     clearTempHelp: "Remove all temporary ranges.",
     analysis: "Analysis",
@@ -281,6 +295,7 @@ const gridToggle = document.getElementById("gridToggle");
 const incendiaryToggle = document.getElementById("incendiaryToggle");
 const furnaceToggle = document.getElementById("furnaceToggle");
 const missileToggle = document.getElementById("missileToggle");
+const dummyBaseToggle = document.getElementById("dummyBaseToggle");
 const recommendationToggle = document.getElementById("recommendationToggle");
 const clearTempButton = document.getElementById("clearTempButton");
 const recommendationSection = document.getElementById("recommendationSection");
@@ -317,6 +332,7 @@ const GRID_TOGGLE_KEY = "lastwar-show-grid";
 const INCENDIARY_TOGGLE_KEY = "lastwar-show-incendiary";
 const FURNACE_TOGGLE_KEY = "lastwar-show-furnace";
 const MISSILE_TOGGLE_KEY = "lastwar-show-missile";
+const DUMMY_BASE_TOGGLE_KEY = "lastwar-show-dummy-base";
 const RECOMMENDATION_TOGGLE_KEY = "lastwar-show-incendiary-recommendations";
 const TEMP_RANGES_KEY = "lastwar-temp-ranges";
 const CLIENT_ID_KEY = "lastwar-client-id";
@@ -342,6 +358,7 @@ let showGrid = localStorage.getItem(GRID_TOGGLE_KEY) === "1";
 let showIncendiary = localStorage.getItem(INCENDIARY_TOGGLE_KEY) === "1";
 let showFurnace = localStorage.getItem(FURNACE_TOGGLE_KEY) === "1";
 let showMissile = localStorage.getItem(MISSILE_TOGGLE_KEY) === "1";
+let showDummyBase = localStorage.getItem(DUMMY_BASE_TOGGLE_KEY) === "1";
 let showRecommendations = localStorage.getItem(RECOMMENDATION_TOGGLE_KEY) === "1";
 let hoverMapPoint = null;
 let clientId = "";
@@ -395,7 +412,7 @@ function loadTempRanges() {
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(
       (item) =>
-        (item?.type === "incendiary" || item?.type === "furnace" || item?.type === "missile") &&
+        (item?.type === "incendiary" || item?.type === "furnace" || item?.type === "missile" || item?.type === "dummyBase") &&
         Number.isInteger(item.x) &&
         Number.isInteger(item.y) &&
         item.x >= 0 &&
@@ -416,31 +433,37 @@ function syncRangeModeToggles() {
   localStorage.setItem(INCENDIARY_TOGGLE_KEY, showIncendiary ? "1" : "0");
   localStorage.setItem(FURNACE_TOGGLE_KEY, showFurnace ? "1" : "0");
   localStorage.setItem(MISSILE_TOGGLE_KEY, showMissile ? "1" : "0");
+  localStorage.setItem(DUMMY_BASE_TOGGLE_KEY, showDummyBase ? "1" : "0");
   incendiaryToggle.setAttribute("aria-pressed", String(showIncendiary));
   incendiaryToggle.classList.toggle("is-active", showIncendiary);
   furnaceToggle.setAttribute("aria-pressed", String(showFurnace));
   furnaceToggle.classList.toggle("is-active", showFurnace);
   missileToggle.setAttribute("aria-pressed", String(showMissile));
   missileToggle.classList.toggle("is-active", showMissile);
-  if (!showIncendiary && !showFurnace && !showMissile) hoverMapPoint = null;
+  dummyBaseToggle.setAttribute("aria-pressed", String(showDummyBase));
+  dummyBaseToggle.classList.toggle("is-active", showDummyBase);
+  if (!showIncendiary && !showFurnace && !showMissile && !showDummyBase) hoverMapPoint = null;
 }
 
 function setRangeMode(mode) {
   showIncendiary = mode === "incendiary";
   showFurnace = mode === "furnace";
   showMissile = mode === "missile";
+  showDummyBase = mode === "dummyBase";
   syncRangeModeToggles();
 }
 
 function rangeName(type) {
   if (type === "furnace") return currentLanguage === "ko" ? "용광로" : "furnace";
   if (type === "missile") return currentLanguage === "ko" ? "미사일" : "missile";
+  if (type === "dummyBase") return currentLanguage === "ko" ? "더미 기지" : "dummy base";
   return currentLanguage === "ko" ? "연소탄" : "incendiary";
 }
 
 function activeRangeType() {
   if (showFurnace) return "furnace";
   if (showMissile) return "missile";
+  if (showDummyBase) return "dummyBase";
   if (showIncendiary) return "incendiary";
   return "";
 }
@@ -701,6 +724,9 @@ function applyTranslations() {
   setText(missileToggle, t("missile"));
   setAttr(missileToggle, "title", t("missileTitle"));
   setText(missileToggle.closest(".tool-control")?.querySelector("small"), t("missileHelp"));
+  setText(dummyBaseToggle, t("dummyBase"));
+  setAttr(dummyBaseToggle, "title", t("dummyBaseTitle"));
+  setText(dummyBaseToggle.closest(".tool-control")?.querySelector("small"), t("dummyBaseHelp"));
   setText(clearTempButton, t("clearTemp"));
   setText(clearTempButton.closest(".tool-control")?.querySelector("small"), t("clearTempHelp"));
   setText(recommendationToggle, t("recommendation"));
@@ -787,8 +813,10 @@ function renderLevelTabs() {
     button.disabled = !available;
     button.hidden = !available;
   }
-  sourceLabel.hidden = false;
-  sourceLabel.href = SUPPLY_SOURCES[activeSource].sourceUrl;
+  const activeSourceMeta = SUPPLY_SOURCES[activeSource];
+  sourceLabel.hidden = !activeSourceMeta.sourceUrl;
+  if (activeSourceMeta.sourceUrl) sourceLabel.href = activeSourceMeta.sourceUrl;
+  else sourceLabel.removeAttribute("href");
   sourceLabel.textContent = `${t("sourcePrefix")} ${historySourceLabel(activeSource)}`;
 }
 
@@ -973,6 +1001,7 @@ function formatHistoryTime(value) {
 function historySourceLabel(source) {
   const normalizedSource = normalizeSource(source);
   if (normalizedSource === "geumgo" && currentLanguage === "en") return "Geumgo";
+  if (normalizedSource === "untitled") return currentLanguage === "ko" ? "무제" : "Untitled";
   return SUPPLY_SOURCES[normalizedSource]?.label || source;
 }
 
@@ -1807,6 +1836,9 @@ function draw() {
   if (showMissile && hoverMapPoint) {
     drawMissileRange(rect, hoverMapPoint.x, hoverMapPoint.y);
   }
+  if (showDummyBase && hoverMapPoint) {
+    drawDummyBaseRange(rect, hoverMapPoint.x, hoverMapPoint.y);
+  }
   drawFrame(rect);
   drawPulses(rect);
 }
@@ -1815,6 +1847,7 @@ function drawTempRanges(rect) {
   for (const item of tempRanges) {
     if (item.type === "furnace") drawFurnaceRange(rect, item.x, item.y);
     else if (item.type === "missile") drawMissileRange(rect, item.x, item.y);
+    else if (item.type === "dummyBase") drawDummyBaseRange(rect, item.x, item.y);
     else drawIncendiaryRange(rect, item.x, item.y);
   }
 }
@@ -1834,19 +1867,24 @@ function gridStepForView(rect) {
   return candidates.find((step) => (step / view.size) * rect.width >= minPixels) || 200;
 }
 
+function firstGridBoundary(start, step) {
+  return Math.ceil((start + 0.5) / step) * step - 0.5;
+}
+
 function drawGrid(rect) {
   const step = gridStepForView(rect);
   const majorStep = step * 5;
-  const startX = Math.ceil(view.x / step) * step;
-  const endX = Math.floor((view.x + view.size) / step) * step;
-  const startY = Math.ceil(view.y / step) * step;
-  const endY = Math.floor((view.y + view.size) / step) * step;
+  const startX = firstGridBoundary(view.x, step);
+  const endX = view.x + view.size + 0.5;
+  const startY = firstGridBoundary(view.y, step);
+  const endY = view.y + view.size + 0.5;
 
   ctx.save();
   ctx.lineWidth = 1;
   for (let x = startX; x <= endX; x += step) {
     const p = mapToScreen(x, view.y, rect);
-    const major = x % majorStep === 0;
+    const coordinateIndex = Math.round(x + 0.5);
+    const major = coordinateIndex % majorStep === 0;
     ctx.strokeStyle = major ? "rgba(255, 255, 255, 0.13)" : "rgba(255, 255, 255, 0.055)";
     ctx.beginPath();
     ctx.moveTo(p.x, 0);
@@ -1855,7 +1893,8 @@ function drawGrid(rect) {
   }
   for (let y = startY; y <= endY; y += step) {
     const p = mapToScreen(view.x, y, rect);
-    const major = y % majorStep === 0;
+    const coordinateIndex = Math.round(y + 0.5);
+    const major = coordinateIndex % majorStep === 0;
     ctx.strokeStyle = major ? "rgba(255, 255, 255, 0.13)" : "rgba(255, 255, 255, 0.055)";
     ctx.beginPath();
     ctx.moveTo(0, p.y);
@@ -2057,6 +2096,53 @@ function drawMissileRange(rect, x, y) {
   drawMapLabel(rect, x, y, `${currentLanguage === "ko" ? "중심" : "Center"} ${x},${y}`, "#ffffff", "center");
   for (const corner of corners) {
     drawMapLabel(rect, corner.x, corner.y, `${corner.x},${corner.y}`, "#ffffff", corner.anchor);
+  }
+}
+
+function drawDummyBaseRange(rect, x, y) {
+  const bounds = rangeBounds(x, y, 1);
+  const box = drawMapRect(
+    rect,
+    bounds.minX,
+    bounds.minY,
+    bounds.maxX,
+    bounds.maxY,
+    "rgba(148, 163, 184, 0.18)",
+    "rgba(226, 232, 240, 0.92)",
+    Math.max(1.5, Math.min(2.6, rect.width / view.size)),
+  );
+  if (!box) return;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(box.left, box.top, box.width, box.height);
+  ctx.clip();
+  ctx.strokeStyle = "rgba(226, 232, 240, 0.38)";
+  ctx.lineWidth = Math.max(1, Math.min(1.8, rect.width / view.size));
+  const spacing = Math.max(5, Math.min(10, box.width / 4));
+  for (let offset = -box.height; offset < box.width + box.height; offset += spacing) {
+    ctx.beginPath();
+    ctx.moveTo(box.left + offset, box.top + box.height);
+    ctx.lineTo(box.left + offset + box.height, box.top);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  const center = mapToScreen(x, y, rect);
+  ctx.save();
+  ctx.fillStyle = "rgba(226, 232, 240, 0.95)";
+  ctx.strokeStyle = "rgba(15, 23, 42, 0.75)";
+  ctx.lineWidth = Math.max(1, Math.min(2, rect.width / view.size));
+  const radius = Math.max(3, Math.min(8, rect.width / view.size * 1.2));
+  ctx.beginPath();
+  ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+
+  if (view.size <= 180) {
+    const label = currentLanguage === "ko" ? `더미 ${x},${y}` : `Dummy ${x},${y}`;
+    drawMapLabel(rect, x, y, label, "#e2e8f0", "center");
   }
 }
 
@@ -2626,6 +2712,15 @@ missileToggle.addEventListener("click", () => {
       : (currentLanguage === "ko" ? "미사일 찍기를 껐습니다." : "Missile pin OFF."),
   );
 });
+dummyBaseToggle.addEventListener("click", () => {
+  setRangeMode(showDummyBase ? "" : "dummyBase");
+  draw();
+  setMessage(
+    showDummyBase
+      ? (currentLanguage === "ko" ? "더미 기지 찍기 ON · 지도 위에서 3×3 범위를 확인하고 클릭하면 임시 표시가 남습니다." : "Dummy base pin ON. Preview the 3×3 range and click the map to place it.")
+      : (currentLanguage === "ko" ? "더미 기지 찍기를 껐습니다." : "Dummy base pin OFF."),
+  );
+});
 recommendationToggle.addEventListener("click", () => {
   showRecommendations = !showRecommendations;
   localStorage.setItem(RECOMMENDATION_TOGGLE_KEY, showRecommendations ? "1" : "0");
@@ -2856,11 +2951,12 @@ canvas.addEventListener(
 window.addEventListener("resize", draw);
 
 canvas.style.cursor = "grab";
-if ([showIncendiary, showFurnace, showMissile].filter(Boolean).length > 1) {
-  const preferredMode = showMissile ? "missile" : showFurnace ? "furnace" : "incendiary";
+if ([showIncendiary, showFurnace, showMissile, showDummyBase].filter(Boolean).length > 1) {
+  const preferredMode = showDummyBase ? "dummyBase" : showMissile ? "missile" : showFurnace ? "furnace" : "incendiary";
   showIncendiary = preferredMode === "incendiary";
   showFurnace = preferredMode === "furnace";
   showMissile = preferredMode === "missile";
+  showDummyBase = preferredMode === "dummyBase";
 }
 buildingToggle.setAttribute("aria-pressed", String(showBuildings));
 buildingToggle.classList.toggle("is-active", showBuildings);
