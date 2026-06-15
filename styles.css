@@ -290,6 +290,10 @@ select {
   min-height: 74px;
 }
 
+.tool-group-range .tool-control {
+  min-height: 88px;
+}
+
 .tool-control button {
   width: 100%;
   min-width: 0;
